@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="data:,">
+    <title>予定リスト</title>
+</head>
+<style>
+    table {
+        height: 100%; /*position: sticky 用*/
+    }
+    thead {
+        position: sticky;
+        top: 0; /*position: sticky 用*/
+    }
+    body {
+        font-size: 120%;
+    }
+    button {
+        font-size: 100%;
+    }
+    input {
+        font-size: 100%
+    }
+    select {
+        font-size: 100%;
+    }
+    .infoEdit {
+        display: none;
+    }
+    .critical {
+        font-size: 200%;
+        background-color: Red;
+        display: None;
+    }
+</style>
+<body">
+    <div class="test">
+        <button onclick="loadMaster()">マスタ更新</button>
+        <button onclick="loadSchedules()">予定取得</button>
+        <button onclick="displaySchedules()">リスト更新</button>
+        <button onclick="updateNow()">現在時刻</button>
+        <input type="text" id="testNow" value="2026/8/24 16:20:11">
+    </div>
+    <div class="message">
+        <a id="message"></a>
+    </div>
+    <div class="info">
+        <button onclick="toggleInfoSettings()">
+            <a>端末ID : </a><a id="deviceId">未取得</a>
+            &emsp;
+            <a>担当者 : </a><a id="userName">未取得</a>
+        </button>
+        &emsp;
+        <a>工程 : </a><select id="lineChoice"><option value="">全て</option></select>
+    </div>
+    <div class="infoEdit" id="infoEditArea">
+        <p>
+            <a>端末ID:</a><input type="text" name="deviceId" id="deviceIdEdit">
+            <a>担当者:</a><input type="text" name="userId" id="userIdEdit">
+        </p>
+    </div>
+    <div style="display:block; margin-top:10px;">
+        <table id="schedule-table" border="1" style="border-collapse: collapse">
+            <thead bgcolor="#c0c0c0">
+                <tr>
+                    <th class="schNo">予定番号</th>
+                    <th>工程</th>
+                    <th>SD製番</th>
+                    <th>物件名</th>
+                    <th>フロア</th>
+                    <th>符号</th>
+                    <th>品名</th>
+                    <th>数量</th>
+                    <th>備考1</th>
+                    <th>備考2</th>
+                    <th>開始</th>
+                    <th>終了</th>
+                    <th>遅れ</th>
+                    <th>進捗</th>
+                    <th>入力</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    <a class="critical" id="critical"></a>
+
+    <script>
+        const _defaultLine = "すべて";
+        //const _host = "192.168.0.78";
+        const _host = "10.34.3.179";
+        //const _host = "localhost";
+        const _port = "3000";
+        const _url = `http://${_host}:${_port}`
+        const _scheduleComppare = (a, b) => {
+            return [
+                a.ProgressType.Status < b.ProgressType.Status,
+                a.StartTime > b.StartTime,
+                a.SchNo > b.SchNo,
+            ].reduce((x, y) => x << 1 | y);
+        };
+        let _scheduleVersion = null;
+        let _deviceId = null;
+        let _user = null;
+        let _schedules = [];
+        let _progressType = [];
+        let _delayRule = [];
+        let _line = _defaultLine;
+
+        initialize();
+
+        setInterval(loadSchedules, 30000);
+        setInterval(displaySchedules, 5000);
+
+        async function initialize() {
+            initializeDeviceId();
+            initializeLine();
+            await loadDelayRule();
+            await loadProgressType();
+            await loadSchedules();
+            await initializeUser();
+            
+            await displaySchedules();
+        }
+        async function initializeUser() {
+            const userId = localStorage.getItem("userId");
+            if (userId) {
+                _user = await getUser(userId);
+                document.getElementById("userName").textContent = _user.Name;
+            }
+        }
+        function initializeDeviceId() {
+            const device = localStorage.getItem("deviceId");
+            if (device) {
+                _deviceId = device;
+                document.getElementById("deviceId").textContent = _deviceId;
+            }
+        }
+        function initializeLine() {
+            _line = localStorage.getItem("line") || _defaultLine;
+            document.getElementById("lineChoice")
+                .addEventListener("change", function () {
+                    _line = this.value;
+                    displaySchedules();
+                    localStorage.setItem("line", _line);
+                }
+            );
+        }
+        async function displaySchedules() {
+            // 全行削除
+            const fragment = document.createDocumentFragment();
+
+            const tableRows = document.querySelector("#schedule-table tbody");
+            if (_deviceId == null || _user == null) {
+                let msg = document.getElementById("critical");
+                msg.textContent = "端末、担当者を入力してください";
+                msg.style.display = "Block"
+                return;
+            }
+            else {
+                let msg = document.getElementById("critical");
+                msg.textContent = "";
+                msg.style.display = "None"
+            }
+
+            // フィルタ適用
+            let lineChoice = document.getElementById("lineChoice");
+            lineChoice.innerHTML = `<option value='${_line}'>${_line}</option>`;
+            const lines = Array.from(new Set(_schedules.map(val => val.Line)));
+            lineChoice.add(new Option(_defaultLine, _defaultLine));
+            for (let line of lines) {
+                lineChoice.add(new Option(line, line));
+            }
+            lineChoice = _line;
+            let current = [];
+            if (_line !== _defaultLine) {
+                current = _schedules.filter(val => val.Line === _line);
+            }
+            else {
+                current = _schedules;
+            }
+
+            // 進捗取得 遅延
+            for (let sch of current) {
+                sch.ProgressType = await getProgressTypeBySchNo(sch.SchNo);
+                try {
+                    sch.Delay = await checkDelay(sch, sch.ProgressType.Status);
+                }
+                catch (error) {
+                    document.getElementById("message").textContent = error.stack;
+                }
+            }
+
+            // ソート
+            current.sort((a, b) => _scheduleComppare(a, b) - _scheduleComppare(b, a));
+
+            // 行追加
+            for (let sch of current) {
+                let row = document.createElement("tr");
+                let i = 0;
+                row.insertCell(i++).textContent = sch.SchNo;
+                row.insertCell(i++).textContent = sch.Line;
+                row.insertCell(i++).textContent = sch.SdNo;
+                row.insertCell(i++).textContent = sch.SdName;
+                row.insertCell(i++).textContent = sch.Floor;
+                row.insertCell(i++).textContent = sch.Symbol;
+                row.insertCell(i++).textContent = sch.ItemName;
+                row.insertCell(i++).textContent = sch.Qty;
+                row.insertCell(i++).textContent = sch.Remark1;
+                row.insertCell(i++).textContent = sch.Remark2;
+                row.insertCell(i++).textContent = uiTime(sch.StartTime);
+                row.insertCell(i++).textContent = uiTime(sch.EndTime);
+                row.insertCell(i++).textContent = sch.Delay.Display;
+                const progCell = row.insertCell(i++);
+                progCell.textContent = sch.ProgressType.Display;
+                progCell.style.backgroundColor = sch.ProgressType.UiColor;
+
+                // 行の色
+                if (sch.ProgressType.Status === "Complete") {
+                    row.style.backgroundColor = sch.ProgressType.UiColor;
+                }
+                else {
+                    row.style.backgroundColor = sch.Delay.UiColor;
+                }
+
+                // 入力ボタン
+                const inputCell = row.insertCell(i++);
+                const inputBtn = document.createElement("button");
+                const lines = Array.from(new Set(_schedules.map(val => val.Line)));
+                const params = [
+                    `?url=${_url}`,
+                    `&deviceId=${_deviceId}`,
+                    `&line=${_line}`,
+                    `&lines=${JSON.stringify(lines)}`,
+                    `&userId=${_user.Id}`,
+                    `&userName=${_user.Name}`,
+                    `&schNo=${sch.SchNo}`,
+                    `&sdNo=${sch.SdNo}`,
+                    `&sdName=${sch.SdName}`,
+                    `&floor=${sch.Floor}`,
+                    `&symbol=${sch.Symbol}`,
+                    `&itemName=${sch.ItemName}`,
+                    `&qty=${sch.Qty}`,
+                    `&startTime=${sch.StartTime.toLocaleString()}`,
+                    `&endTime=${sch.EndTime.toLocaleString()}`,
+                    `&remark1=${sch.Remark1}`,
+                    `&remark2=${sch.Remark3}`,
+                ];
+                inputBtn.textContent = "入力";
+                inputBtn.addEventListener("click", () => {
+                    window.location.href = `detail.html${params.join("")}`;
+                });
+                inputCell.appendChild(inputBtn);
+                fragment.appendChild(row);
+            }
+            tableRows.replaceChildren(fragment);
+        }
+        function toggleInfoSettings() {
+            const area = document.getElementById("infoEditArea");
+            if (area.style.display === "block") {
+                area.style.display = "None";
+                var id = document.getElementById("deviceIdEdit").value;
+                if (id != "") {
+                    localStorage.setItem("deviceId", id.trim());
+                }
+                var id = document.getElementById("userIdEdit").value;
+                if (id != "") {
+                    localStorage.setItem("userId", id);
+                }
+                initialize();
+            }
+            else {
+                area.style.display = "block";
+            }
+        }
+        function updateNow() {
+            const testNow = document.getElementById("testNow");
+            if (testNow == null) {
+                return;
+            }
+            testNow.value = new Date().toLocaleString();
+        }
+        async function loadMaster() {
+            await loadProgressType();
+            await loadDelayRule();
+        }
+        async function loadProgressType() {
+            try {
+                const resp = await fetch(`${_url}/api/progressType`);
+                _progressType = await resp.json();
+            }
+            catch (error) {
+                document.getElementById("message").textContent = error;
+            }
+        }
+        async function loadDelayRule() {
+            try {
+                const resp = await fetch(`${_url}/api/delayrule`);
+                _delayRule = await resp.json();
+                for (let rule of _delayRule) {
+                    rule.HighValue = Number(rule.HighValue);
+                }
+            }
+            catch (error) {
+                document.getElementById("message").textContent = error;
+            }
+        }
+        async function loadSchedules() {
+            try {
+                // バージョン確認して更新されていなければ続行する処理を書く
+                let serverVersion = getScheduleVersion();
+                if (serverVersion === _scheduleVersion) {
+                    return;
+                }
+                const resp = await fetch(`${_url}/api/schedules`);
+                if (!resp.ok) {
+                    const msg = (await resp.json()).message
+                    document.getElementById("message").textContent = message;
+                    return;
+                }
+                _schedules = await resp.json();
+                for (let sch of _schedules) {
+                    let dateArray = sch.SchDate.split("/");
+                    sch.SchDate = createDate(dateArray[0], dateArray[1], dateArray[2])
+                        .value
+                    ;
+                    var timeArray = sch.StartTime.split(":");
+                    sch.StartTime = createDate(
+                        dateArray[0],
+                        dateArray[1],
+                        dateArray[2],
+                        timeArray[0],
+                        timeArray[1]
+                    ).value || new Date(1900, 0, 1);
+                    var timeArray = sch.EndTime.split(":");
+                    sch.EndTime = createDate(
+                        dateArray[0],
+                        dateArray[1],
+                        dateArray[2],
+                        timeArray[0],
+                        timeArray[1]
+                    ).value || new Date(1900, 0, 1);
+                }
+            }
+            catch (error) {
+                document.getElementById("message").textContent = error;
+            }
+        }
+        async function getScheduleVersion() {
+            try {
+                const resp = await fetch(`${_url}/api/schedules/version`);
+                if (!resp.ok) {
+                    const msg = (await resp.json()).message;
+                    document.getElementById("message").textContent = msg;
+                    return;
+                }
+                return resp.json().Version;
+            }
+            catch (error) {
+                document.getElementById("message").textContent = error;
+            }
+        }
+        async function getProgressTypeBySchNo(schNo) {
+            try {
+                const resp = await fetch(`${_url}/api/progress/${schNo}`);
+                if (!resp.ok) {
+                    let error = resp.json();
+                    throw new Error(error.message);
+                }
+                const progress = await resp.json();
+                return _progressType.find(val => val.Status === progress.AfterStatus);
+            }
+            catch (error) {
+                document.getElementById("message").textContent = error.stack;
+            }
+        }
+        async function getCompleteTime(schNo) {
+            try {
+                const resp = await fetch(`${_url}/api/progress/${schNo}`);
+                const progress = await resp.json();
+                if (progress == null) {
+                    return null;
+                }
+                const timeElements = progress.ServerDateTime.split(/[ /:]/);
+                if (timeElements.length < 5) {
+                    return null;
+                }
+                const time = createDate(
+                    timeElements[0],
+                    timeElements[1],
+                    timeElements[2],
+                    timeElements[3],
+                    timeElements[4],
+                );
+                if (time.ok) {
+                    return time.value;
+                }
+                return null;
+            }
+            catch (error) {
+                document.getElementById("message").textContent = error;
+            }
+        }
+        async function getUser(id) {
+            try {
+                const resp = await fetch(`${_url}/api/users/${id}`);
+                if (!resp.ok) {
+                    const msg = (await resp.json()).message;
+                    document.getElementById("message").textContent = msg;
+                    return;
+                }
+                return await resp.json();
+            }
+            catch (error) {
+                document.getElementById("message").textContent = error;
+            }
+        }
+        async function checkDelay(sch, progressTypeStatus) {
+            if (sch.StartTime == null || sch.EndTime == null){
+                return { HighValue: 0, Display: "予定時間不正" };
+            }
+            let delayMilliSeconds;
+            if (progressTypeStatus === "Complete") {
+                // 完了
+                let rule = _delayRule.find(val => val.HighValue === 0);
+                if (!rule){
+                    return { HighValue: 0, Display: "遅延マスタ不正" };
+                }
+                //return rule;
+                const serverTime = getCompleteTime(sch.SchNo);
+                if (serverTime == null) {
+                    return rule
+                }
+                delayMilliSeconds = serverTime - sch.EndTime
+            }
+            if (progressTypeStatus === "None") {
+                // 未着手
+                delayMilliSeconds = getNow() - sch.StartTime;
+            }
+            else {
+                // 着手
+                delayMilliSeconds = getNow() - sch.EndTime;
+            }
+            const delayMinutes = delayMilliSeconds / 1000 / 60;
+            const minValue = _delayRule
+                .filter(val => val.HighValue >= delayMinutes)
+                .map(val => val.HighValue)
+                .reduce((a, b) => Math.min(a, b), Number.MAX_VALUE)
+            ;
+            let rule = _delayRule.find(val => val.HighValue === minValue);
+            if (!rule){
+                let timeDisp = delayMilliSeconds / 1000 / 60;
+                if (timeDisp < 60)
+                    timeDisp = `${timeDisp}分`;
+                else if (timeDisp < 60 * 24) {
+                    timeDisp = `${Math.round(timeDisp / 60)}時間`;
+                }
+                else {
+                    timeDisp = `${Math.round(timeDisp / 60 / 24)}日`;
+                }
+                return {
+                    HighValue: delayMilliSeconds,
+                    Display: `${timeDisp}遅れ`,
+                    UiColor: "#ff4500",
+                    LampColor: "Red"
+                };
+            }
+            return rule;
+        }
+        function getNow() {
+            const inputNow = document.getElementById("testNow").value;
+            if (inputNow == null || inputNow.trim() === "") {
+                return new Date();
+            }
+            const tokens = inputNow.split(/[ /:]/);
+            if (tokens.length < 5) {
+                return new Date();
+            }
+            const now = createDate(tokens[0], tokens[1], tokens[2], tokens[3], tokens[4]);
+            if (!now.ok) {
+                return new Date();
+            }
+            return now.value;
+        }
+        // 文字から日付を作成する
+        function createDate(year, month, day, hour, min) {
+            var year = Number(year);
+            if (isNaN(year)) {
+                return { ok : false, message : "年が数字ではありません" };
+            }
+            if (year < 1991 || year > (new Date().getFullYear() + 1)) {
+                return { ok : false };
+            }
+            var month = Number(month);
+            if (isNaN(month)) {
+                return { ok : false};
+            }
+            if (month < 1 || month > 12) {
+                return { ok : false };
+            }
+            var day = Number(day);
+            if (isNaN(day)) {
+                return { ok : false };
+            }
+            if (day < 1 || day > 31) {
+                return { ok : false };
+            }
+            // 時間が未指定なら日付だけ返す
+            let date = new Date(year, month - 1, day);
+            if (hour == null) {
+                return { ok : true, value : date };
+            }
+            // 時間解析
+            var hour = Number(hour);
+            if (isNaN(hour)) {
+                return { ok : false };
+            }
+            if (hour < 0 || hour > 23) {
+                return { ok : false };
+            }
+            var min = Number(min);
+            if (isNaN(min)) {
+                return { ok : false };
+            }
+            if (min < 0 || min > 59) {
+                return { ok : false };
+            }
+            let dateTime = new Date(year, month - 1, day, hour, min);
+            return { ok : true, value : dateTime };
+        }
+        // 日付を時刻の文字列にして返す(例:18:00)
+        function uiTime(date) {
+            var timeElements = date.toLocaleTimeString().split(":");
+            timeElements.pop();
+            return timeElements.join(":");
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+[
+    {
+        "HighValue" : "0",
+        "Display" : "遅延なし",
+        "UiColor" : "#90ee90",
+        "LampColor" : "Green"
+    },
+    {
+        "HighValue" : "10",
+        "Display" : "遅れ10分以内",
+        "UiColor" : "#90ee90",
+        "LampColor" : "Green"
+    },
+    {
+        "HighValue" : "30",
+        "Display" : "遅れ30分以内",
+        "UiColor" : "#ffff00",
+        "LampColor" : "Yellow"
+    },
+    {
+        "HighValue" : "60",
+        "Display" : "遅れ60分以内",
+        "UiColor" : "#ff4500",
+        "LampColor" : "Red"
+    }
+]

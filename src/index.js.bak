@@ -1,0 +1,24 @@
+// 参考 https://qiita.com/mithra_inc/items/562f0d3f4b2b7ee286d9
+
+const express = require("express");
+const cors = require("cors")
+const { getSchedules } = require("./controllers/schedule.js");
+const { getProgressType } = require("./controllers/progressType.mjs");
+const { getDelayRule } = require("./controllers/delayRule.mjs");
+const { getUser, getUsers } = require("./controllers/user.mjs");
+const { getProgress, getProgressOptions, postProgress } = require("./controllers/progress.mjs");
+const port = 3000;
+const app = express();
+
+
+// JSONを扱うためのミドルウェア
+app.use(express.json());
+
+// ブラウザのCORS制限回避
+app.use(cors());
+
+app.listen(port, () => {
+    console.log(`Server is running on http://localhost:${port}`);
+});
+
+

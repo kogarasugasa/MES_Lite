@@ -1,0 +1,22 @@
+[
+    {
+        "Status" : "None",
+        "Display" : "未着手",
+        "UiColor" : "#87cefa"
+    },
+    {
+        "Status" : "Running",
+        "Display" : "仕掛",
+        "UiColor" : "#7cfc00"
+    },
+    {
+        "Status" : "Wait",
+        "Display" : "中断",
+        "UiColor" : "#f0e68c"
+    },
+    {
+        "Status" : "Complete",
+        "Display" : "完了",
+        "UiColor" : "#dcdcdc"
+    }
+]

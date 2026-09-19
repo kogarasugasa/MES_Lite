@@ -1,0 +1,4 @@
+[
+    {"Id" : "adm001", "Name" : "佐藤", "Type" : "admin" },
+    {"Id" : "usr001", "Name" : "鈴木", "Type" : "" }
+]

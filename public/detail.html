@@ -1,0 +1,294 @@
+<style>
+    body {
+        font-size: 120%;
+    }
+    .left {
+        float: left;
+        text-align: left;
+        margin-bottom: 10px
+    }
+    .right {
+        float: right;
+        text-align: left;
+        margin-bottom: 10px
+    }
+    .start {
+        width : 30%;
+        height : 10%;
+    }
+    .status {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width : 40%;
+        height : 50%;
+        font-size : 160%;
+        border-radius : 5px;
+        padding : 10px;
+    }
+    .backButton {
+        border-radius : 5px;
+        background-color :lightskyblue;
+        padding : 10px;
+        text-decoration : none;
+        color : white;
+    }
+    select {
+        font-size: 100%;
+    }
+</style>
+<div class="info">
+    <br>
+    <a href="schedule_list.html" class="backButton">戻る</a>
+    <span>
+        <a>端末ID : </a>
+        <a id="deviceId">未取得</a>
+    </span>
+    &emsp;
+    <span>
+        <a>担当者 : </a>
+        <a id="userName">未取得</a>
+    </span>
+    &emsp;
+    <a>工程 : </a><select id="lineChoice"><option value=""></option></select>
+</div>
+<div style="background-color:lightgray;">
+    <div style="margin-left: 10%;">
+        <h1>実績入力</h1>
+    </div>
+</div>
+<div id="messageArea" style="Display: None">
+    <button id=messageOkBtn onclick="hideMessage()">OK</button><a id="message"></a>
+</div>
+<div class="left">
+    <a class="status" id="status">取得中</a>
+</div>
+<div class="left">
+    <div id="textboxArea" style="display:block; margin-top:10px;">
+        <table id="schedule-detail" style="border-collapse: collapse">
+            <tbody>
+                <tr>
+                    <td>予定番号</td>
+                    <td> : </td>
+                    <td id="schNo"></div>
+                </tr>
+                <tr>
+                    <td>SD製番</td>
+                    <td> : </td>
+                    <td id="sdNo"></td>
+                </tr>
+                <tr>
+                    <td>物件名</td>
+                    <td> : </td>
+                    <td id="sdName"></td>
+                </tr>
+                <tr>
+                    <td>フロア</td>
+                    <td> : </td>
+                    <td id="floor"></td>
+                </tr>
+                <tr>
+                    <td>符号</td>
+                    <td> : </td>
+                    <td id="symbol"></td>
+                </tr>
+                <tr>
+                    <td>品名</td>
+                    <td> : </td>
+                    <td id="itemName"></td>
+                </tr>
+                <tr>
+                    <td>数量</td>
+                    <td> : </td>
+                    <td id="qty"></td>
+                </tr>
+                <tr>
+                    <td>開始時間</td>
+                    <td> : </td>
+                    <td id="startTime"></td>
+                </tr>
+                <tr>
+                    <td>終了時間</td>
+                    <td> : </td>
+                    <td id="endTime"></td>
+                </tr>
+                <tr>
+                    <td>備考1</td>
+                    <td> : </td>
+                    <td id="remark1"></td>
+                </tr>
+                <tr>
+                    <td>備考2</td>
+                    <td> : </td>
+                    <td id="remark2"></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <div>
+        <button disabled="true" class="start" id="start" onclick="sendProgress('Running')">開始</button>
+        <button disabled="true" class="start" id="wait" onclick="sendProgress('Wait')">中断</button>
+        <button disabled="true" class="start" id="complete" onclick="sendProgress('Complete')">完了</button>
+    </div>
+</div>
+
+
+<script>
+    const _params = new URLSearchParams(window.location.search);
+    const _url = _params.get("url").trim();
+    const _deviceId = _params.get("deviceId").trim();
+    const _lines = JSON.parse(_params.get("lines"));
+    const _line = _lines.find(val => val === _params.get("line").trim());
+    const _userId = _params.get("userId").trim();
+    const _userName = _params.get("userName");
+    const _schNo = _params.get("schNo").trim();
+    const _sdNo = _params.get("sdNo");
+    const _sdName = _params.get("sdName");
+    const _floor = _params.get("floor");
+    const _symbol = _params.get("symbol");
+    const _itemName = _params.get("itemName");
+    const _qty = _params.get("qty");
+    const _startTime = _params.get("startTime");
+    const _endTime = _params.get("endTime");
+    const _remark1 = _params.get("remark1");
+    const _remark2 = _params.get("remark2");
+    let _progress = null;
+    let _progressTypes = null;
+
+    initialize();
+
+    async function initialize() {
+        // データ取得
+        await loadMaster();
+
+        // 端末情報
+        document.getElementById("deviceId").textContent = _deviceId;
+        document.getElementById("userName").textContent = _userName;
+
+        // 予定情報
+        document.getElementById("schNo").textContent = _schNo;
+        document.getElementById("sdNo").textContent = _sdNo;
+        document.getElementById("sdName").textContent = _sdName;
+        document.getElementById("floor").textContent = _floor;
+        document.getElementById("symbol").textContent = _symbol;
+        document.getElementById("itemName").textContent = _itemName;
+        document.getElementById("qty").textContent = _qty;
+        document.getElementById("startTime").textContent = _startTime;
+        document.getElementById("endTime").textContent = _endTime;
+        document.getElementById("remark1").textContent = _remark1;
+        document.getElementById("remark2").textContent = _remark2;
+
+        // ドロップダウン
+        const lineChoice = document.getElementById("lineChoice");
+        for (let line of _lines) {
+            lineChoice.add(new Option(line, line));
+        }
+        document.getElementById("lineChoice").value = _lines.find(val => val === _line);
+
+        // ボタン
+        displayButtonEnables();
+
+        // ステータス
+        displayStatus();
+        
+    }
+    // データ加工
+    function getEnableButtonNames(afterStatus) {
+        switch (afterStatus) {
+            case "None": return ["Running"];
+            case "Running": return ["None", "Wait", "Complete"];
+            case "Wait": return ["Running"];
+            case "Complete": return [];
+            default:
+                console.log(`進捗の定義がありません ${afterStatus}`);
+                return [];
+        }
+    }
+    function displayButtonEnables() {
+        const options = getEnableButtonNames(_progress.AfterStatus);
+        document.getElementById("start").disabled = !options.includes("Running");
+        document.getElementById("wait").disabled = !options.includes("Wait");
+        document.getElementById("complete").disabled = !options.includes("Complete");
+    }
+    function displayStatus() {
+        const statusPanel = document.getElementById("status");
+        const status = _progressTypes.find(val => val.Status === _progress.AfterStatus) ||
+            { Display: `未定義:${_progress.AfterStatus}`, UiColor: "Red" }
+        ;
+        statusPanel.textContent = status.Display;
+        statusPanel.style.backgroundColor = status.UiColor;
+    }
+    // データ取得系
+    async function sendProgress(status) {
+        const data = {
+            SchNo : _schNo,
+            BeforeStatus : null,
+            AfterStatus : status,
+            DeviceId : _deviceId,
+            Line : document.getElementById("lineChoice").value,
+            UserId : _userId,
+            ClientDateTime : new Date().toLocaleString(),
+            ServerDateTime : null
+        }
+        try {
+            let init = {
+                method : "POST",
+                headers : {
+                    "Content-Type" : "application/json"
+                },
+                body : JSON.stringify(data)
+            };
+            const resp = await fetch(`${_url}/api/progress`, init);
+            if (!resp.ok) {
+                const err = await resp.json();
+                openMessage(err.message);
+                return;
+            }
+            const result = await resp.json();
+        }
+        catch (error) {
+            alert(error.message);
+            return;
+        }
+        await loadMaster();
+        displayButtonEnables();
+        displayStatus();
+    }
+    async function loadMaster() {
+        _progress = await getProgress();
+        _progressTypes = await getProgressType();
+    }
+    async function getProgress() {
+        try {
+            const resp = await fetch(`${_url}/api/progress/${_schNo}`);
+            if (!resp.ok) {
+                alert((await resp.json()).message);
+                return;
+            }
+            return await resp.json();
+        }
+        catch (error) {
+            alert(error.message)
+        }
+    }
+    async function getProgressType() {
+        try {
+            const resp = await fetch(`${_url}/api/progressType`);
+            if (!resp.ok) {
+                alert((await resp.json()).message);
+                return;
+            }
+            return await resp.json();
+        }
+        catch (error) {
+            alert(error);
+        }
+    }
+    function hideMessage() {
+        document.getElementById("messageArea").style.display = "none";
+    }
+    function openMessage(msg) {
+        document.getElementById("messageArea").style.display = "block";
+        document.getElementById("message").textContent = msg;
+    }
+</script>
