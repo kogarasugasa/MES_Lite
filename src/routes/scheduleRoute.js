@@ -10,8 +10,10 @@ const router = Router();
 // スケジュール取得
 router.get("", getSchedules);
 
-router.get("/:line", getScheduleByLine);
-
+// バージョン取得
 router.get("/version", getScheduleVersion);
+
+// スケジュール取得（工程）
+router.get("/:line", getScheduleByLine);
 
 export default router;
