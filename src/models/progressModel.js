@@ -1,11 +1,21 @@
 export class Progress {
+    /** @type {String} */
+    UUID;
+    /** @type {String} */
     SchNo;
+    /** @type {String} */
     BeforeStatus;
+    /** @type {String} */
     AfterStatus;
+    /** @type {String} */
     DeviceId;
+    /** @type {String} */
     Line;
+    /** @type {String} */
     UserId;
+    /** @type {String} */
     ClientDateTime;
+    /** @type {String} */
     ServerDateTime;
 
     /**

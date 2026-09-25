@@ -23,6 +23,9 @@ export const validateProgress = (progress) => {
             ];
             return createErrResult(msg.join(" "));
         }
+        if (progress.UUID == null || progress.UUID.trim() === "") {
+            return createErrResult("UUIDが入力されていません");
+        }
         if (progress.Line == null || progress.Line.trim() === "") {
             return createErrResult("工程が入力されていません");
         }

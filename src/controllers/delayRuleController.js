@@ -1,22 +1,30 @@
 import fs from 'fs'
-export const getDelayRule = async (req, res) => {
-    const json = loadJson();
-    if (json) {
-        res.json(json);
+
+import { HttpStatus } from "../helpers/httpStatusHelper.js";
+import {
+    findDelayRule,
+    findDelayRuleVersion,
+} from "../services/delayRuleService.js";
+
+export const getDelayRuleVersion = async (req, res) => {
+    const version = findDelayRuleVersion();
+    if (version.ok) {
+        res.json({ ok: true, value: { Version: version.value }});
     }
     else {
-        res.status(404).json({ message: "delayRule json not found" });
+        const notFound = HttpStatus.notFound;
+        const err = { ok: false, message: notFound.desc };
+        res.status(notFound.number).json(err);
     }
 }
-function loadJson() {
-    const dir = "./data/Master";
-    const fileName = "/DelayRule.json"
-    let path = dir + fileName;
-    if (fs.existsSync(path)) {
-        let str = fs.readFileSync(path, "utf8");
-        return JSON.parse(str);
+export const getDelayRule = async (req, res) => {
+    const rule = findDelayRule();
+    if (rule.ok) {
+        res.json(rule);
     }
     else {
-        return null;
+        const notFound = HttpStatus.notFound;
+        const err = { ok: false, message: notFound.desc };
+        res.status(notFound.number).json(err);
     }
 }

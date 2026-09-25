@@ -33,34 +33,69 @@
         background-color: Red;
         display: None;
     }
+    .message {
+        display: none;
+    }
+    #spinner {
+        border: 4px solid #eee; /* 先の太さや色になる */
+        border-top: 4px solid #333;
+        border-radius: 50%; /* 50% 丸めるとまるくなる */
+        width: 30px; /* ローディングアイコンのサイズになる */
+        height: 30px; /* ローディングアイコンのサイズになる */
+        animation: spin 1s linear infinite; /* 1秒ごとのアニメーションの指定 */
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); } 
+        100% { transform: rotate(360deg); }
+    }
 </style>
 <body">
     <div class="test">
-        <button onclick="loadMaster()">マスタ更新</button>
-        <button onclick="loadSchedules()">予定取得</button>
-        <button onclick="displaySchedules()">リスト更新</button>
-        <button onclick="updateNow()">現在時刻</button>
-        <input type="text" id="testNow" value="2026/8/24 16:20:11">
+        <a>[遅延マスタ Ver.</a><a id="delayRuleVersion"></a><a>]</a>
+        <a>[進捗マスタ Ver.</a><a id="progressTypeVersion"></a><a>]</a>
+        <a>[担当マスタ Ver.</a><a id="usersVersion"></a><a>]</a>
+        <a>[端末マスタ Ver.</a><a id="devicesVersion"></a><a>]</a>
+        <a>[予定情報 Ver.</a><a id="schedulesVersion"></a><a>]</a>
+        <a>[進捗情報 Ver.</a><a id="progressVersion"></a><a>]</a>
+        <audio id="callSound" preload="auto" src="sound.wav" type="audio/wav"></audio>
+        <br>
+        <button onclick="loadMasterAsync()">マスタ更新</button>
+        <button onclick="loadSchedulesAsync()">予定取得</button>
+        <button onclick="updateView()">リスト更新</button>
+        <button onclick="deleteLocalStorageAll()">ローカル削除</button>
+        <button onclick="changeNowDateTime()">現在時刻</button>
+        <input type="text" id="testNow" value="2026/8/24 10:55:11">
+        <input type="text" id="lamp" value="lamp">
     </div>
-    <div class="message">
-        <a id="message"></a>
+    <div class="message" id="messageArea">
+        <button onclick="closeMessage()">OK</button><a id="message"></a>
     </div>
     <div class="info">
+        <input type="text" id="health" value="">
         <button onclick="toggleInfoSettings()">
-            <a>端末ID : </a><a id="deviceId">未取得</a>
+            <a>端末 : </a><a id="deviceName">未取得</a>
             &emsp;
             <a>担当者 : </a><a id="userName">未取得</a>
         </button>
         &emsp;
-        <a>工程 : </a><select id="lineChoice"><option value="">全て</option></select>
+        <a>工程 : </a><select id="lineChoice">
+            <option value="">すべて</option>
+        </select>
+        &emsp;
+        <select id="lampRefChoice">
+            <option value="all">ランプは常に全体の進捗を反映する</option>
+            <option value="current">ランプは選択された工程の進捗を反映する</option>
+        </select>
     </div>
     <div class="infoEdit" id="infoEditArea">
         <p>
             <a>端末ID:</a><input type="text" name="deviceId" id="deviceIdEdit">
+            <select id="deviceChoice"><option value="">-選択してください-</option></select>
             <a>担当者:</a><input type="text" name="userId" id="userIdEdit">
+            <select id="userChoice"><option value="">-選択してください-</option></select>
         </p>
     </div>
-    <div style="display:block; margin-top:10px;">
+    <div style="display:block; margin-top:10px;" id="tableArea">
         <table id="schedule-table" border="1" style="border-collapse: collapse">
             <thead bgcolor="#c0c0c0">
                 <tr>
@@ -84,13 +119,20 @@
             <tbody></tbody>
         </table>
     </div>
-    <a class="critical" id="critical"></a>
+    <div id="loadingSpinner" style="display: none;">
+        <div id="spinner"></div>
+        <a>更新中...</a>
+    </div>
+    <a class="critical" id="critical" style="display: none;"></a>
 
     <script>
+        // script head
         const _defaultLine = "すべて";
+        const _defaultDevice = { DeviceId: "", Name: "要設定" }
+        const _defaultUser = { UserId: "", Name: "要設定" };
         //const _host = "192.168.0.78";
-        //const _host = "10.34.3.179";
-        const _host = "localhost";
+        const _host = "10.34.3.179";
+        //const _host = "localhost";
         const _port = "3000";
         const _url = `http://${_host}:${_port}`
         const _scheduleComppare = (a, b) => {
@@ -100,71 +142,343 @@
                 a.SchNo > b.SchNo,
             ].reduce((x, y) => x << 1 | y);
         };
+        const _localStorageKeys = {
+            user: "user",
+            device: "device",
+            line: "line",
+            pendingProgress: "pendingProgress",
+            schedules: "schedules",
+            progress: "progress",
+            progressType: "progressType",
+            delayRule: "delayRule",
+        };
         let _scheduleVersion = null;
-        let _deviceId = null;
-        let _user = null;
+        let _device = _defaultDevice;
+        let _user = _defaultUser;
         let _schedules = [];
         let _progressType = [];
         let _delayRule = [];
         let _line = _defaultLine;
+        let _lampColor = { Current: "Green", Before: "" };
+        let _isConnected = true;
+        let _message = "";
+        let _users = [];
+        let _progressVersion = "0";
+        let _progress = [];
+        let _isOperating = false;
+        let _isInfoEditOpen = false;
+        let _isUpdated = false;
+        let _delayRuleVersion = null;
+        let _progressTypeVersion = null;
+        let _usersVersion = null;
+        let _devices = { Version: "", items: [] };
 
-        initialize();
+        // initialize
+        window.addEventListener("pointerdown", () => {
+            _isOperating = true;
+        });
+        window.addEventListener("pointerup", () => {
+            _isOperating = false;
+        });
+        
+        initializeAsync();
 
-        setInterval(loadSchedules, 30000);
-        setInterval(displaySchedules, 5000);
-
-        async function initialize() {
-            initializeDeviceId();
+        // 処理ここまで。以下関数
+        /** 初期化処理
+         * 
+        */
+        async function initializeAsync() {
+            _isConnected = await getHealthAsync();
+            initializeDevice();
+            await initializeUserAsync()
             initializeLine();
-            await loadDelayRule();
-            await loadProgressType();
-            await loadSchedules();
-            await initializeUser();
-            
-            await displaySchedules();
-        }
-        async function initializeUser() {
-            const userId = localStorage.getItem("userId");
-            if (userId) {
-                _user = await getUser(userId);
-                document.getElementById("userName").textContent = _user.Name;
-            }
-        }
-        function initializeDeviceId() {
-            const device = localStorage.getItem("deviceId");
-            if (device) {
-                _deviceId = device;
-                document.getElementById("deviceId").textContent = _deviceId;
-            }
-        }
-        function initializeLine() {
-            _line = localStorage.getItem("line") || _defaultLine;
-            document.getElementById("lineChoice")
-                .addEventListener("change", function () {
-                    _line = this.value;
-                    displaySchedules();
-                    localStorage.setItem("line", _line);
-                }
-            );
-        }
-        async function displaySchedules() {
-            // 全行削除
-            const fragment = document.createDocumentFragment();
+            initializeLampRefChoice();
 
-            const tableRows = document.querySelector("#schedule-table tbody");
-            if (_deviceId == null || _user == null) {
+            // ヘルスチェック
+            const loopCheckHealth = async () => {
+                _isConnected = await getHealthAsync();
+                setTimeout(loopCheckHealth, 5000);
+            }
+            await loopCheckHealth();
+
+            // マスタ定期読み込み
+            const loopLoadMaster = async () => {
+                await loadUsersAsync();
+                await loadDeviceAsync();
+                await loadDelayRuleAsync();
+                await loadProgressTypeAsync();
+                setTimeout(loopLoadMaster, 10000);
+            }
+            await loopLoadMaster();
+
+            // スケジュール定期読み込み
+            const loopLoadSchedulesAsync = async () => {
+                await loadSchedulesAsync();
+                setTimeout(loopLoadSchedulesAsync, 5000);
+            }
+            await loopLoadSchedulesAsync();
+
+            // 進捗データ構築
+            const loodLoadProgressAsync = async () => {
+                await loadProgressAsync();
+                setTimeout(loodLoadProgressAsync, 3000);
+            }
+            await loodLoadProgressAsync();
+
+            // 画面定期更新
+            _isUpdated = false; // 初期化時は寸前差替え防止画面を表示しない
+            const loopUpdateViewAsync = async () => {
+                updateData();
+                updateView();
+                setTimeout(loopUpdateViewAsync, 200);
+                if (_isUpdated) {
+                    setTimeout(() => _isUpdated = false, 1000);
+                }
+            }
+            await loopUpdateViewAsync();
+
+            // ランプ定期更新
+            const loopUpdateLampAsync = async () => {
+                await updateLampAsync()
+                setTimeout(loopUpdateLampAsync, 3000);
+            };
+            await loopUpdateLampAsync();
+
+            // 呼出し更新
+            const loopUpdateSoundAsync = async () => {
+                await loadCallStatusAsync();
+                updateSound();
+                setTimeout(loopUpdateSoundAsync, 5000);
+            };
+            await loopUpdateSoundAsync();
+
+            // 送信失敗した進捗の再送信
+            const loopSendLocalProgressAsync = async () => {
+                await sendLocalProgressAsync();
+                setTimeout(loopSendLocalProgressAsync, 1000);
+            }
+            await loopSendLocalProgressAsync();
+        }
+        /** 担当者情報を初期化する
+         * 
+        */
+        async function initializeUserAsync() {
+            await loadUsersAsync();
+            let local;
+            try {
+                local = JSON.parse(localStorage.getItem(_localStorageKeys.user));
+            }
+            catch (error) {
+                _message = "ユーザーを読み込みに失敗しました";
+                return;
+            }
+            if (local) {
+                const user = _users.find(val => val.UserId === local.UserId);
+                if (user) {
+                    _user = user;
+                    localStorage.setItem(
+                        _localStorageKeys.user,
+                        JSON.stringify(_user)
+                    );
+                    document.getElementById("userName").textContent = _user.Name;
+                }
+                else {
+                    _user = local;
+                    document.getElementById("userName").textContent = _user.Name;
+                    _message = "ユーザーの登録がありません";
+                }
+            }
+        }
+        /** デバイス情報を初期化する
+         * 
+        */
+        function initializeDevice() {
+            const localStr = localStorage.getItem(_localStorageKeys.device);
+            if (localStr == null) {
+                return;
+            }
+            let local;
+            try {
+                local = JSON.parse(localStr);
+            }
+            catch (error) {
+                _message = `DeviceIdの初期化に失敗しました。${error.message}`;
+                return;
+            }
+            _device = local;
+            document.getElementById("deviceName").textContent = _device.Name;
+        }
+        /** 工程情報を初期化する
+         * 
+        */
+        function initializeLine() {
+            _line = localStorage.getItem(_localStorageKeys.line) || _defaultLine;
+        }
+        function initializeLampRefChoice() {
+            if (_user?.Type !== "admin") {
+                document.getElementById("lampRefChoice").value = "current";
+            }
+        }
+        // update
+        /** ランプ表示更新
+         * 
+        */
+        async function updateLampAsync() {
+            if (_lampColor.Before === _lampColor.Current) {
+                return;
+            }
+            _lampColor.Before = _lampColor.Current;
+            const color = _lampColor.Current;
+
+            // ランプ変更
+            const lampResp = await sendLampAsync(color);
+            if (!lampResp.ok) {
+                _message = "ランプの変更に失敗しました。" + lampResp.message;
+            }
+            const logResp = await sendLampLogAsync(
+                _device.DeviceId,
+                _user.UserId,
+                color
+            );
+            if (!logResp.ok) {
+                _message = "ランプログの記録に失敗しました" + logResp.message;
+            }
+        }
+        /** 画面表示更新
+         * 
+        */
+        function updateView() {
+            // 待機画面中
+            if (_isUpdated) {
+                document.getElementById("tableArea").style.display = "none";
+                document.getElementById("loadingSpinner").style.display = "block"
+                return;
+            }
+            else {
+                document.getElementById("loadingSpinner").style.display = "none";
+                document.getElementById("tableArea").style.display = "block";
+            }
+
+            // 画面操作中は更新しない
+            if (_isOperating) {
+                return;
+            }
+
+            // 表示データ構築
+            updateData();
+
+            // バージョン表示
+            document.getElementById("delayRuleVersion").textContent = 
+                _delayRuleVersion;
+            document.getElementById("progressTypeVersion").textContent =
+                _progressTypeVersion;
+            document.getElementById("usersVersion").textContent =
+                _usersVersion;
+            document.getElementById("devicesVersion").textContent =
+                _devices.Version;
+            document.getElementById("schedulesVersion").textContent =
+                _scheduleVersion;
+            document.getElementById("progressVersion").textContent =
+                _progressVersion;
+
+            // メッセージ
+            if (_message !== "") {
+                document.getElementById("messageArea")
+                    .style.display = "block";
+                document.getElementById("message")
+                    .textContent = _message;
+            }
+            else {
+                document.getElementById("messageArea")
+                    .style.display = "none";
+            }
+
+            // ユーザー、デバイス、表示
+            document.getElementById("deviceName")
+                .textContent = _device?.Name || "不明";
+            document.getElementById("userName")
+                .textContent = _user?.Name || "不明";
+            
+            // ユーザー、デバイス、編集エリア
+            if (_isInfoEditOpen) {
+                document.getElementById("infoEditArea")
+                    .style.display = "block";
+                // ユーザー
+                document.getElementById("userIdEdit")
+                    .placeholder = _user?.UserId;
+                let userChoice = document.getElementById("userChoice");
+                let optionFragment = document.createDocumentFragment();
+                const optionUsers = _user == null ?
+                    [].concat([_defaultUser], _users) :
+                    [].concat([_user], _users)
+                ;
+                for (let user of optionUsers) {
+                    let option = document.createElement("option");
+                    option.value = user.UserId;
+                    option.textContent = user.Name;
+                    optionFragment.appendChild(option);
+                }
+                userChoice.replaceChildren(optionFragment);
+
+                // デバイス
+                document.getElementById("deviceIdEdit").
+                    placeholder = _device.DeviceId || "";
+                let deviceChoice = document.getElementById("deviceChoice");
+                let deviceFragment = document.createDocumentFragment();
+                const optionDevices = _device == null ?
+                    [].concat([_defaultDevice], _devices.items) :
+                    [].concat([_device], _devices.items)
+                ;
+                for (let device of optionDevices) {
+                    let option = document.createElement("option");
+                    option.value = device.DeviceId;
+                    option.textContent = device.Name;
+                    deviceFragment.appendChild(option);
+                }
+                deviceChoice.replaceChildren(deviceFragment);
+            }
+            else {
+                document.getElementById("infoEditArea")
+                    .style.display = "none";
+            }
+
+            // 警告メッセージ
+            if (_device == null ||
+                _device.DeviceId === "" ||
+                _user == null ||
+                _user.UserId === ""
+            ) {
                 let msg = document.getElementById("critical");
                 msg.textContent = "端末、担当者を入力してください";
                 msg.style.display = "Block"
-                return;
             }
             else {
                 let msg = document.getElementById("critical");
                 msg.textContent = "";
                 msg.style.display = "None"
             }
+            
+            // サーバーステータス
+            const health = document.getElementById("health");
+            if (_isConnected) {
+                health.value = "サーバー接続";
+                health.style.backgroundColor = "#00ff00";
+            }
+            else {
+                health.value = "サーバー切断";
+                health.style.backgroundColor = "Red";
+            }
 
-            // フィルタ適用
+            // ユーザー、デバイスの入力がない場合、以下を描画しない
+            if (_user == null ||
+                _device == null ||
+                _user.UserId === "" ||
+                _device.DeviceId === ""
+            ) {
+                return;
+            }
+
+            // フィルタ選択作成
             let lineChoice = document.getElementById("lineChoice");
             lineChoice.innerHTML = `<option value='${_line}'>${_line}</option>`;
             const lines = Array.from(new Set(_schedules.map(val => val.Line)));
@@ -172,30 +486,16 @@
             for (let line of lines) {
                 lineChoice.add(new Option(line, line));
             }
-            lineChoice = _line;
-            let current = [];
-            if (_line !== _defaultLine) {
-                current = _schedules.filter(val => val.Line === _line);
-            }
-            else {
-                current = _schedules;
-            }
 
-            // 進捗取得 遅延
-            for (let sch of current) {
-                sch.ProgressType = await getProgressTypeBySchNo(sch.SchNo);
-                try {
-                    sch.Delay = await checkDelay(sch, sch.ProgressType.Status);
-                }
-                catch (error) {
-                    document.getElementById("message").textContent = error.stack;
-                }
-            }
-
-            // ソート
-            current.sort((a, b) => _scheduleComppare(a, b) - _scheduleComppare(b, a));
-
+            // フィルタ適用
+            let current = _line === _defaultLine ?
+                _schedules :
+                _schedules.filter(val => val.Line === _line)
+            ;
+            
             // 行追加
+            const tableRows = document.querySelector("#schedule-table tbody");
+            const fragment = document.createDocumentFragment();
             for (let sch of current) {
                 let row = document.createElement("tr");
                 let i = 0;
@@ -230,10 +530,10 @@
                 const lines = Array.from(new Set(_schedules.map(val => val.Line)));
                 const params = [
                     `?url=${_url}`,
-                    `&deviceId=${_deviceId}`,
+                    `&deviceId=${_device.DeviceId}`,
                     `&line=${_line}`,
                     `&lines=${JSON.stringify(lines)}`,
-                    `&userId=${_user.Id}`,
+                    `&userId=${_user.UserId}`,
                     `&userName=${_user.Name}`,
                     `&schNo=${sch.SchNo}`,
                     `&sdNo=${sch.SdNo}`,
@@ -245,7 +545,7 @@
                     `&startTime=${sch.StartTime.toLocaleString()}`,
                     `&endTime=${sch.EndTime.toLocaleString()}`,
                     `&remark1=${sch.Remark1}`,
-                    `&remark2=${sch.Remark3}`,
+                    `&remark2=${sch.Remark2}`,
                 ];
                 inputBtn.textContent = "入力";
                 inputBtn.addEventListener("click", () => {
@@ -256,191 +556,495 @@
             }
             tableRows.replaceChildren(fragment);
         }
-        function toggleInfoSettings() {
-            const area = document.getElementById("infoEditArea");
-            if (area.style.display === "block") {
-                area.style.display = "None";
-                var id = document.getElementById("deviceIdEdit").value;
-                if (id != "") {
-                    localStorage.setItem("deviceId", id.trim());
-                }
-                var id = document.getElementById("userIdEdit").value;
-                if (id != "") {
-                    localStorage.setItem("userId", id);
-                }
-                initialize();
+        /** 画面データ構築
+         * 
+        */
+        function updateData() {
+            // ユーザー
+            const choiceUser = document.getElementById("userChoice").value;
+            const inputUser = document.getElementById("userIdEdit").value.trim();
+            let userId = "";
+            if (inputUser === "" && choiceUser === "") {
+                userId;
+            }
+            else if (inputUser === "") {
+                userId = choiceUser;
+            }
+            else if (choiceUser === "") {
+                userId = inputUser;
+            }
+            else if (inputUser !== choiceUser && choiceUser === _user.UserId) {
+                userId = inputUser;
+                document.getElementById("userChoice").value = inputUser;
+            }
+            else if (inputUser !== choiceUser && inputUser === _user.UserId) {
+                userId = choiceUser;
+                document.getElementById("userIdEdit").value = "";
             }
             else {
-                area.style.display = "block";
+                userId = _user?.UserId;
+            }
+            if (userId !== "" && userId !== _user?.UserId) {
+                const userEntry = setUser(userId);
+                if (userEntry.message != null) {
+                    _message = userEntry.message;
+                }
+            }
+            
+            // デバイス
+            const choiceDevice = document.getElementById("deviceChoice").value;
+            const inputDevice = document.getElementById("deviceIdEdit").value.trim();
+            let deviceId;
+            if (inputDevice === "" && choiceDevice === "") {
+                deviceId = "";
+            }
+            else if (inputDevice === "") {
+                deviceId = choiceDevice;
+            }
+            else if (choiceDevice === "") {
+                deviceId = inputDevice;
+            }
+            else if (inputDevice !== choiceDevice && choiceDevice === _device.DeviceId) {
+                deviceId = inputDevice;
+                document.getElementById("deviceChoice").value = inputDevice;
+            }
+            else if (inputDevice !== choiceDevice && inputDevice === _device.DeviceId) {
+                deviceId = choiceDevice;
+                document.getElementById("deviceIdEdit").value = "";
+            }
+            else {
+                deviceId = _device?.DeviceId;
+            }
+            if (deviceId !== "" && deviceId !== _device?.DeviceId) {
+                const deviceEntry = setDevice(deviceId);
+                if (deviceEntry.message != null) {
+                    _message = deviceEntry.message;
+                }
+            }
+
+            // 工程
+            const inputLine = document.getElementById("lineChoice").value;
+            if (_line == null || _line === "") {
+                _line = _defaultLine;
+            }
+            _line = inputLine === "" ? _line : inputLine;
+            localStorage.setItem(_localStorageKeys.line, _line);
+
+            // 行の内容を構築
+            const none = JSON.stringify({
+                SchNo: "-",
+                AfterStatus: "None",
+                ClientDateTime: getNow().toLocaleString()
+            });
+            let lamp = { HighValue: 0, LampColor: "Green" };
+            let scheduleWork = _schedules;
+            for (let sch of scheduleWork) {
+                // 進捗最新データ設定
+                sch.Progress = _progress
+                    .filter(val => val.SchNo === sch.SchNo)
+                    .pop() ||
+                    JSON.parse(none)
+                ;
+
+                // 進捗ステータス設定
+                sch.ProgressType = _progressType
+                    .find(val => val.Status === sch.Progress.AfterStatus) ||
+                    { Status: "None", Display: "取得中", UiColor: "Red"}
+                ;
+
+                // 遅延状態設定
+                let clientTime = parseDateTime(sch.Progress.ClientDateTime);
+                clientTime = clientTime.ok ?
+                    clientTime.value :
+                    null
+                ;
+                sch.Delay = findMatchingDelay(
+                    sch.ProgressType,
+                    sch.StartTime,
+                    sch.EndTime,
+                    clientTime
+                );
+
+                // ランプ設定計算
+                if (sch.ProgressType.Status !== "Complete") {
+                    switch (true) {
+                        case _line === _defaultLine:
+                        case document.getElementById("lampRefChoice").value === "all":
+                        case sch.Line === _line:
+                            if (lamp.HighValue < sch.Delay.HighValue) {
+                                lamp = sch.Delay;
+                            }
+                            break;
+                    }
+                }
+            }
+
+            // ランプ設定
+            _lampColor.Current = lamp.LampColor;
+
+            // ソート
+            scheduleWork.sort((a, b) => _scheduleComppare(a, b) - _scheduleComppare(b, a));
+            _schedules = scheduleWork;
+        }
+        function updateSound() {
+            if (_isSoundPlayRequested) {
+                document.getElementById("callSound").play();
+            }
+            if (_isSoundStopRequested) {
+                const call = document.getElementById("callSound")
+                call.pause();
+                call.currentTime = 0;
             }
         }
-        function updateNow() {
+        // functions
+        /** (イベント用）メッセージを閉じる
+         * 
+        */
+        function closeMessage() {
+            _message = "";
+        }
+        /** （イベント用）設定画面を開け閉めする
+         * 
+        */
+        function toggleInfoSettings() {
+            _isInfoEditOpen = !_isInfoEditOpen;
+        }
+        /** （テスト用）基準時間に現在時刻をセットする
+         * 
+        */
+        function changeNowDateTime() {
             const testNow = document.getElementById("testNow");
             if (testNow == null) {
                 return;
             }
             testNow.value = new Date().toLocaleString();
         }
-        async function loadMaster() {
-            await loadProgressType();
-            await loadDelayRule();
+        /** （テスト用）ローカルデータをすべて削除する
+         * 
+        */
+        function deleteLocalStorageAll() {
+            localStorage.clear();
         }
-        async function loadProgressType() {
-            try {
-                const resp = await fetch(`${_url}/api/progressType`);
-                _progressType = await resp.json();
+        /** ユーザー情報を変数とローカルに書き込む
+         * @param {string} userId
+         * @returns {{ok: boolean, message: string}}
+        */
+       // data loader
+        function setUser(userId) {
+            if (userId == null || userId === "") {
+                return { ok: false, message: "userIdが空です" };
             }
-            catch (error) {
-                document.getElementById("message").textContent = error;
-            }
+            const user = _users.find(val => val.UserId === userId) ||
+                { UserId: userId, Name: "登録なし" }
+            ;
+            _user = user;
+            const local = JSON.stringify(user);
+            localStorage.setItem(_localStorageKeys.user, local);
+            return { ok: true }
         }
-        async function loadDelayRule() {
-            try {
-                const resp = await fetch(`${_url}/api/delayrule`);
-                _delayRule = await resp.json();
-                for (let rule of _delayRule) {
-                    rule.HighValue = Number(rule.HighValue);
-                }
+        /** デバイス情報を変数とローカルに書き込む
+         * @param {string} deviceId
+         * @returns {{ok: boolean, message: string}}
+        */
+        function setDevice(deviceId) {
+            if (deviceId == null || deviceId === "") {
+                return { ok: false, message: "deviceIdが空です"};
             }
-            catch (error) {
-                document.getElementById("message").textContent = error;
-            }
+            const device = _devices.items.find(val => val.DeviceId === deviceId) ||
+                { DeviceId: deviceId, Name: "登録なし" }
+            ;
+            _device = device;
+            const local = JSON.stringify(device)
+            localStorage.setItem(_localStorageKeys.device, local);
+            return { ok: true };
         }
-        async function loadSchedules() {
-            try {
-                // バージョン確認して更新されていなければ続行する処理を書く
-                let serverVersion = getScheduleVersion();
-                if (serverVersion === _scheduleVersion) {
+        /** （テスト用）マスタをすべて変数に読み込む
+         * 
+        */
+        async function loadMasterAsync() {
+            await loadProgressTypeAsync();
+            await loadDelayRuleAsync();
+            await loadUsersAsync();
+            await loadDeviceAsync();
+        }
+        /** 担当者マスタを変数に読み込む
+         * 
+        */
+        async function loadUsersAsync() {
+            const version = await getUserVersionAsync();
+            if (!version.ok) {
+                _message = version.message;
+                return;
+            }
+            if (_usersVersion === version.value) {
+                return;
+            }
+            const users = await getUsersAsync();
+            if (!users.ok) {
+                _message = users.message;
+                return;
+            }
+            _usersVersion = version.value;
+            _users = users.value;
+        }
+        /** 端末マスタを変数に読み込む
+         * 
+        */
+        async function loadDeviceAsync() {
+            const version = await getDeviceVersionAsync();
+            if (!version.ok) {
+                _message = version.message;
+                return;
+            }
+            if (_devices.Version === version.value) {
+                return;
+            }
+            const devices = await getDevicesAsync();
+            if (!devices.ok) {
+                _message = devices.message;
+                return;
+            }
+            _devices.Version = version.value;
+            _devices.items = devices.value;
+        }
+        /** 進捗マスタを変数に読み込む
+         * 
+        */
+        async function loadProgressTypeAsync() {
+            const version = await getProgressTypeVersionAsync();
+            if (!version.ok) {
+                _message = version.message;
+                return;
+            }
+            if (_progressTypeVersion === version.value ) {
+                return;
+            }
+            let types = await getProgressTypeAsync();
+            if (!types.ok) {
+                const msg = "進捗マスタの取得に失敗しました。" + types.message;
+                _message = msg;
+                types = localStorage.getItem(_localStorageKeys.progressType);
+                if (types == null) {
                     return;
                 }
-                const resp = await fetch(`${_url}/api/schedules`);
-                if (!resp.ok) {
-                    const msg = (await resp.json()).message
-                    document.getElementById("message").textContent = message;
+                _progressType = JSON.parse(types);
+                return;
+            }
+            _progressTypeVersion = version.value;
+            _progressType = types.value;
+            localStorage.setItem(_localStorageKeys.progressType, JSON.stringify(_progressType));
+        }
+        /** 遅延マスタを変数に読み込む
+         * 
+        */
+        async function loadDelayRuleAsync() {
+            const version = await getDelayRuuleVersionAsync();
+            if (!version.ok) {
+                _message = "遅延ルールマスタバージョンの取得に失敗しました";
+                return;
+            }
+            if (_delayRuleVersion === version.value) {
+                return;
+            }
+            const rule = await getDelayRuleAsync();
+            if (!rule.ok) {
+                const local = localStorage.getItem(_localStorageKeys.delayRule);
+                if (local == null) {
+                    const msg = "遅延マスタの取得に失敗しました。" + rule.message;
+                    _message = msg;
                     return;
                 }
-                _schedules = await resp.json();
-                for (let sch of _schedules) {
-                    let dateArray = sch.SchDate.split("/");
-                    sch.SchDate = createDate(dateArray[0], dateArray[1], dateArray[2])
-                        .value
+                _delayRule = JSON.parse(local);
+                for (let e of _delayRule) {
+                    e.HighValue = Number(e.HighValue);
+                }
+                return;
+            }
+            _delayRuleVersion = version.value;
+            _delayRule = rule.value;
+            localStorage.setItem(
+                _localStorageKeys.delayRule,
+                JSON.stringify(_delayRule)
+            );
+            for (let e of _delayRule) {
+                e.HighValue = Number(e.HighValue);
+            }
+        }
+        /** 予定を変数に読み込む
+         * 
+        */
+        async function loadSchedulesAsync() {
+            const version = await getScheduleVersionAsync();
+            let local;
+            if (!version.ok) {
+                _message =
+                    "スケジュールバージョンの取得に失敗しました。" +
+                    version.message
+                ;
+                local = getSchedulesFromLocal();
+            }
+            if (version.value === _scheduleVersion) {
+                return;
+            }
+            let schedules = await getSchedulesAsync();
+            if (!schedules.ok) {
+                if (local == null) {
+                    _message = 
+                        "スケジュールの取得に失敗しました。" + schedules.message
                     ;
-                    var timeArray = sch.StartTime.split(":");
-                    sch.StartTime = createDate(
-                        dateArray[0],
-                        dateArray[1],
-                        dateArray[2],
-                        timeArray[0],
-                        timeArray[1]
-                    ).value || new Date(1900, 0, 1);
-                    var timeArray = sch.EndTime.split(":");
-                    sch.EndTime = createDate(
-                        dateArray[0],
-                        dateArray[1],
-                        dateArray[2],
-                        timeArray[0],
-                        timeArray[1]
-                    ).value || new Date(1900, 0, 1);
+                    local = getSchedulesFromLocal();
                 }
+                schedules = { ok: true, value: local };
             }
-            catch (error) {
-                document.getElementById("message").textContent = error;
+            else {
+                _isUpdated = true; // 外部からの更新を検知
+                // オフライン用ローカル保存
+                const json = JSON.stringify(schedules.value);
+                localStorage.setItem(_localStorageKeys.schedules, json);
+            }
+            
+            //日付を文字から変換
+            for (let sch of schedules.value) {
+                let dateArray = sch.SchDate.split("/");
+                sch.SchDate = createDate(dateArray[0], dateArray[1], dateArray[2])
+                    .value
+                ;
+                var timeArray = sch.StartTime.split(":");
+                sch.StartTime = createDate(
+                    dateArray[0],
+                    dateArray[1],
+                    dateArray[2],
+                    timeArray[0],
+                    timeArray[1]
+                ).value || new Date(1900, 0, 1);
+                var timeArray = sch.EndTime.split(":");
+                sch.EndTime = createDate(
+                    dateArray[0],
+                    dateArray[1],
+                    dateArray[2],
+                    timeArray[0],
+                    timeArray[1]
+                ).value || new Date(1900, 0, 1);
+            }
+            _schedules = schedules.value;
+            _scheduleVersion = version.value;
+        }
+        /** 進捗を変数に読み込む
+         * 
+        */
+        async function loadProgressAsync() {
+            const version = await getProgressVersion();
+            if (!version.ok) {
+                // バージョンの取得失敗したらローカルから返す
+                _message = "進捗バージョンの取得に失敗しました。" + version.message;
+                _progress = getProgressFromLocal();
+                return;
+            }
+            
+            // バージョンチェック
+            const newVersion = _user?.Type !== "admin" ?
+                version.value + _line :
+                version.value
+            ;
+            if (newVersion === _progressVersion) {
+                return;
+            }
+
+            // 進捗取得
+            const progress = _line === _defaultLine ?
+                await getProgressAll() :
+                await getProgressByLineAsync(_line)
+            ;
+            if (!progress.ok) {
+                // 失敗したらローカルから返す
+                _message = "進捗の取得に失敗しました。" + progress.message;
+                _progress = getProgressFromLocal();
+                return;
+            }
+
+            _isUpdated = true; // 外部からの更新を検知
+            // オフライン用にローカルに保存
+            localStorage.setItem(
+                _localStorageKeys.progress,
+                JSON.stringify(progress.value)
+            );
+
+            // データ更新
+            _progress = progress.value;
+            _progressVersion = newVersion;
+        }
+        async function loadCallStatusAsync() {
+            const status = await getCallStatusAsync();
+            if (!status.ok) {
+                _message = status.message;
+                return;
+            }
+            const toMe = status.value
+                .find(val => val.DeviceId = _device.DeviceId)
+            ;
+            if (toMe == null) {
+                return;
             }
         }
-        async function getScheduleVersion() {
-            try {
-                const resp = await fetch(`${_url}/api/schedules/version`);
-                if (!resp.ok) {
-                    const msg = (await resp.json()).message;
-                    document.getElementById("message").textContent = msg;
-                    return;
-                }
-                return resp.json().Version;
-            }
-            catch (error) {
-                document.getElementById("message").textContent = error;
-            }
+        /** ローカルに保存された進捗を取得します
+         * @returns {[]}
+        */
+        function getProgressFromLocal() {
+            const localProgressStr = localStorage.getItem(
+                _localStorageKeys.progress
+            );
+            const local = JSON.parse(localProgressStr || "[]");
+            const pendingProgressStr = localStorage.getItem(
+                _localStorageKeys.pendingProgress
+            );
+            const pending = JSON.parse(pendingProgressStr || "[]");
+            const union = [].concat(local, pending);
+            return union;
         }
-        async function getProgressTypeBySchNo(schNo) {
-            try {
-                const resp = await fetch(`${_url}/api/progress/${schNo}`);
-                if (!resp.ok) {
-                    let error = resp.json();
-                    throw new Error(error.message);
-                }
-                const progress = await resp.json();
-                return _progressType.find(val => val.Status === progress.AfterStatus);
-            }
-            catch (error) {
-                document.getElementById("message").textContent = error.stack;
-            }
+        /** ローカルに保存された予定を取得します
+         * @returns {[]}
+        */
+        function getSchedulesFromLocal() {
+            const local = localStorage.getItem(_localStorageKeys.schedules);
+            return JSON.parse(local || "[]");
         }
-        async function getCompleteTime(schNo) {
-            try {
-                const resp = await fetch(`${_url}/api/progress/${schNo}`);
-                const progress = await resp.json();
-                if (progress == null) {
-                    return null;
+        /** 遅延ルールと照合し、マッチする遅延ルールを取得します
+         * @param {ProgressType} progressType
+         * @param {Date} startTime
+         * @param {Date} endTime
+         * @param {Date} clientTime
+         * @returns {{HighValue: Number, Display: String, UiColor: String, LampColor: String}}
+        */
+        function findMatchingDelay(progressType, startTime, endTime, clientTime) {
+            const createErr = (msg) => {
+                return {
+                    HighValue: 99999,
+                    Display: msg,
+                    UiColor: "#9400d3",
                 }
-                const timeElements = progress.ServerDateTime.split(/[ /:]/);
-                if (timeElements.length < 5) {
-                    return null;
-                }
-                const time = createDate(
-                    timeElements[0],
-                    timeElements[1],
-                    timeElements[2],
-                    timeElements[3],
-                    timeElements[4],
-                );
-                if (time.ok) {
-                    return time.value;
-                }
-                return null;
             }
-            catch (error) {
-                document.getElementById("message").textContent = error;
+            if (startTime == null || endTime == null){
+                errValue
+                return createErr("予定時間Err");
             }
-        }
-        async function getUser(id) {
-            try {
-                const resp = await fetch(`${_url}/api/users/${id}`);
-                if (!resp.ok) {
-                    const msg = (await resp.json()).message;
-                    document.getElementById("message").textContent = msg;
-                    return;
-                }
-                return await resp.json();
-            }
-            catch (error) {
-                document.getElementById("message").textContent = error;
-            }
-        }
-        async function checkDelay(sch, progressTypeStatus) {
-            if (sch.StartTime == null || sch.EndTime == null){
-                return { HighValue: 0, Display: "予定時間不正" };
+            if (progressType == null) {
+                return createErr("進捗取得Err");
             }
             let delayMilliSeconds;
-            if (progressTypeStatus === "Complete") {
+            if (progressType.Status === "Complete") {
                 // 完了
-                let rule = _delayRule.find(val => val.HighValue === 0);
-                if (!rule){
-                    return { HighValue: 0, Display: "遅延マスタ不正" };
+                if (clientTime == null) {
+                    return createErr("完了取得Err");
                 }
-                //return rule;
-                const serverTime = getCompleteTime(sch.SchNo);
-                if (serverTime == null) {
-                    return rule
-                }
-                delayMilliSeconds = serverTime - sch.EndTime
+                delayMilliSeconds = clientTime - endTime
             }
-            if (progressTypeStatus === "None") {
+            else if (progressType.Status === "None") {
                 // 未着手
-                delayMilliSeconds = getNow() - sch.StartTime;
+                delayMilliSeconds = getNow() - startTime;
             }
             else {
                 // 着手
-                delayMilliSeconds = getNow() - sch.EndTime;
+                delayMilliSeconds = getNow() - endTime;
             }
             const delayMinutes = delayMilliSeconds / 1000 / 60;
             const minValue = _delayRule
@@ -450,7 +1054,7 @@
             ;
             let rule = _delayRule.find(val => val.HighValue === minValue);
             if (!rule){
-                let timeDisp = delayMilliSeconds / 1000 / 60;
+                let timeDisp = delayMinutes;
                 if (timeDisp < 60)
                     timeDisp = `${timeDisp}分`;
                 else if (timeDisp < 60 * 24) {
@@ -459,15 +1063,26 @@
                 else {
                     timeDisp = `${Math.round(timeDisp / 60 / 24)}日`;
                 }
+                const maxValue = _delayRule
+                    .map(val => val.HighValue)
+                    .reduce((a, b) => Math.max(a, b), Number.MIN_VALUE)
+                ;
+                const maxRule = _delayRule
+                    .find(val => val.HighValue === maxValue)
+                ;
                 return {
-                    HighValue: delayMilliSeconds,
+                    HighValue: delayMinutes,
                     Display: `${timeDisp}遅れ`,
-                    UiColor: "#ff4500",
-                    LampColor: "Red"
+                    UiColor: maxRule?.UiColor || "#ff4500",
+                    LampColor: maxRule?.LampColor || "Red"
                 };
             }
             return rule;
         }
+        /**
+         * @description 入力されていればその日付、違うならシステム時刻を返す
+         * @returns {Date}
+        */
         function getNow() {
             const inputNow = document.getElementById("testNow").value;
             if (inputNow == null || inputNow.trim() === "") {
@@ -483,28 +1098,65 @@
             }
             return now.value;
         }
-        // 文字から日付を作成する
+        /** 文字の日付を日付型に変換する
+         * @param {String} str
+        */
+        function parseDateTime(str) {
+            let timeElements;
+            try {
+                timeElements = str.split(/[ /:]/);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (timeElements.length === 3) {
+                return createDate(
+                    timeElements[0],
+                    timeElements[1],
+                    timeElements[2],
+                );
+            }
+            else if (timeElements.length > 5) {
+                return createDate(
+                    timeElements[0],
+                    timeElements[1],
+                    timeElements[2],
+                    timeElements[3],
+                    timeElements[4],
+                );
+            }
+            else {
+                return { ok: false, message: "[/][ ][:]で分割した数が3でも5以上でもありません" };
+            }
+        }
+        /** 文字から日付を作成する
+         * @param {String} year
+         * @param {String} month
+         * @param {String} day
+         * @param {String} hour
+         * @param {String} min
+        */
         function createDate(year, month, day, hour, min) {
             var year = Number(year);
             if (isNaN(year)) {
                 return { ok : false, message : "年が数字ではありません" };
             }
             if (year < 1991 || year > (new Date().getFullYear() + 1)) {
-                return { ok : false };
+                return { ok : false, message: "日付が今日から離れ過ぎています"};
             }
             var month = Number(month);
             if (isNaN(month)) {
-                return { ok : false};
+                return { ok : false, message: "月が数値ではありません"};
             }
             if (month < 1 || month > 12) {
-                return { ok : false };
+                return { ok : false, message: "月が1-12ではありません" };
             }
             var day = Number(day);
             if (isNaN(day)) {
-                return { ok : false };
+                return { ok : false, message: "日が数値ではありません" };
             }
             if (day < 1 || day > 31) {
-                return { ok : false };
+                return { ok : false, message: "日が1-31ではありません" };
             }
             // 時間が未指定なら日付だけ返す
             let date = new Date(year, month - 1, day);
@@ -514,26 +1166,436 @@
             // 時間解析
             var hour = Number(hour);
             if (isNaN(hour)) {
-                return { ok : false };
+                return { ok : false, message: "時が数値ではありません" };
             }
             if (hour < 0 || hour > 23) {
-                return { ok : false };
+                return { ok : false, message: "時が0-23ではありません" };
             }
             var min = Number(min);
             if (isNaN(min)) {
-                return { ok : false };
+                return { ok : false, message: "分ば数値ではありません" };
             }
             if (min < 0 || min > 59) {
-                return { ok : false };
+                return { ok : false, message: "分が0-59ではありません" };
             }
             let dateTime = new Date(year, month - 1, day, hour, min);
             return { ok : true, value : dateTime };
         }
-        // 日付を時刻の文字列にして返す(例:18:00)
+        /** Uiに表示する時間(HH:mm)に整形する
+         * @description 日付を時刻の文字列にして返す(例:18:00)
+         * @param {Date} date
+         * @returns {String}
+        */
         function uiTime(date) {
             var timeElements = date.toLocaleTimeString().split(":");
             timeElements.pop();
             return timeElements.join(":");
+        }
+        // api access
+        /** サーバーから遅延ルールをすべて取得する
+         * @returns {{ ok: boolean, value: [], message: String }}
+        */
+        async function getDelayRuleAsync() {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーが応答しません");
+                resp = await fetch(`${_url}/api/delayrule`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            return await resp.json();
+        }
+        /** 遅延マスタのバージョンを取得する
+         * @returns {{ ok: boolean, value: string, message: string }}
+        */
+        async function getDelayRuuleVersionAsync() {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーに接続されていません");
+                resp = await fetch(`${_url}/api/delayrule/version`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            const version = await resp.json();
+            return { ok: true, value: version.value.Version };
+        }
+        /** サーバーから予定をすべて取得する
+         * @returns {{ ok: booean, value: [], message: String }}
+        */
+        async function getSchedulesAsync() {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーが応答しません");
+                resp = await fetch(`${_url}/api/schedules`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            const schedules = await resp.json();
+            return { ok: true, value: schedules };
+        }
+        /** サーバーから予定の現在のバージョンを取得する
+         * @returns {{ ok: boolean, value: string, message: String }}
+        */
+        async function getScheduleVersionAsync() {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーが応答しません");
+                resp = await fetch(`${_url}/api/schedules/version`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            const version = await resp.json();
+            return { ok: true, value: version.Version };
+        }
+        /** サーバーから進捗の現在のバージョンを取得する
+         * @returns {{ok: boolean, value: string, message: string}}
+        */
+        async function getProgressVersion() {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーが応答しません");
+                resp = await fetch(`${_url}/api/progress/version`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            return await resp.json();
+        }
+        /** サーバーから指定の工程の進捗を取得する
+         * @returns {{ ok: boolean, value: [], message: String }}
+        */
+        async function getProgressByLineAsync(line) {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーが応答しません");
+                resp = await fetch(`${_url}/api/progress/line/${line}`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            return { ok: true, value: await resp.json() };
+        }
+        /** サーバーから進捗をすべて取得する
+         * @returns {{ok: boolean, value: [], message: string}}
+        */
+        async function getProgressAll(line) {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーが応答しません");
+                resp = await fetch(`${_url}/api/progress`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            return { ok: true, value: await resp.json() };
+        }
+        /**
+         * @returns {{ok: boolean, value: any, message: String}}
+        */
+        async function getProgressTypeAsync() {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーが応答しません");
+                resp = await fetch(`${_url}/api/progressType`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = resp.json();
+                return { ok: false, message: error.message };
+            }
+            return { ok: true, value: await resp.json() };
+        }
+        /** 進捗マスタのバージョンを取得する
+         * @returns {{ok: boolean, value: string, message: string }}
+        */
+        async function getProgressTypeVersionAsync() {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーが応答しません");
+                resp = await fetch(`${_url}/api/progressType/version`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            const version = await resp.json();
+            return { ok: true, value: await version.Version };
+        }
+        /**
+         * @returns {{ ok: boolean, value: any, message: String }}
+        */
+        async function getUsersAsync() {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバが応答しません");
+                resp = await fetch(`${_url}/api/users`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            return { ok: true, value: await resp.json() };
+        }
+        /** ユーザーマスタのバージョンを取得する
+         * @returns {{ ok: boolean, value: string, message: string }}
+        */
+        async function getUserVersionAsync() {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーに接続されていません");
+                resp = await fetch(`${_url}/api/users/version`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            const version = await resp.json();
+            return { ok: true, value: version.value.Version };
+        }
+        /** デバイス情報を取得する
+         * @returns {{ ok:boolean, value: [Device], message: string }}
+        */
+        async function getDevicesAsync() {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーに接続されていません");
+                resp = await fetch(`${_url}/api/device`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            const devices = await resp.json();
+            return devices;
+        }
+        /** 端末マスタのバージョンを取得する
+         * @returns {{ ok: boolean, value: string, message: string }}
+        */
+        async function getDeviceVersionAsync() {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーに接続されていません");
+                resp = await fetch(`${_url}/api/device/version`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            const version = await resp.json();
+            return { ok: true, value: version.value.Version };
+        }
+        async function getCallStatusAsync() {
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーに接続されていません");
+                resp = await fetch(`${_url}/api/call`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            return await resp.json();
+        }
+        /**
+         * @description ランプ変更
+         * @prama {String} color
+         * @returns { {ok: boolean, message: String} }
+        */
+        async function sendLampAsync(color) {
+            if (_device.LampAddress ==="None") {
+                return;
+            }
+            let operation;
+            switch (color) {
+                case "Red": operation = "Red"; break;
+                case "Yellow": operation = "Yellow"; break;
+                case "Green": operation = "Green"; break;
+                default: operation = "Red"; break;
+            }
+            const fetchUrl =
+                `${_device.LampAddress}/api/color/${operation}`
+            ;
+            try {
+                // テスト用コード
+                const virtualLamp = document.getElementById("lamp");
+                virtualLamp.value = fetchUrl;
+                virtualLamp.style.backgroundColor = operation;
+                return { ok: true };
+
+                // 本番想定コード
+                const lamp = await fetch(fetchUrl);
+                if (!lamp.ok) {
+                    const msg = "ランプの操作に失敗しました";
+                    return { ok: false, message: msg };
+                }
+                return { ok: true };
+            }
+            catch (error) {
+                return { ok: false, message: error.stack };
+            }
+        }
+        /** ランプが点灯したログを送信する
+         * @param {string} deviceId
+         * @param {string} userId
+         * @param {string} color
+         * @returns {{ ok: boolean, message: string }}
+        */
+        async function sendLampLogAsync(deviceId, userId, color) {
+            const data = {
+                DeviceId: deviceId,
+                UserId: userId,
+                LampColor: color,
+                DeviceAddress: "no data",
+                LampAddress: "no data",
+                ClientDateTime: (new Date).toLocaleString(),
+            }
+            const json = {
+                method : "POST",
+                headers : {
+                    "Content-Type" : "application/json"
+                },
+                body : JSON.stringify(data)
+            };
+            let resp;
+            try {
+                resp = await fetch(`${_url}/api/lamplog`, json);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            return { ok: true };
+        }
+        /**
+         * @description 送信に失敗しlocalStrageに保存された進捗を送信する
+        */
+        async function sendLocalProgressAsync() {
+            const local = localStorage.getItem(_localStorageKeys.pendingProgress);
+            if (local == null) {
+                return;
+            }
+            let pendings = JSON.parse(local);
+            let first = pendings.shift();
+            if (first == null) {
+                return;
+            }
+            let sended = await sendProgressAsync(first);
+            if (sended.ok) {
+                // 正常に登録できた場合
+                const json = JSON.stringify(pendings);
+                localStorage.setItem(_localStorageKeys.pendingProgress, json);
+            }
+            else if (sended.value != null) {
+                // サーバー側でエラーで登録拒否された場合
+                const json = JSON.stringify(pendings);
+                localStorage.setItem(_localStorageKeys.pendingProgress, json);
+            }
+            else {
+                // サーバーに接続できなかった場合
+                _message = "サーバーに接続できませんでした。" + sended.message;
+            }
+        }
+        /**
+         * @param {String} status
+         * @param {any} data
+         * @returns {{ok: boolean, value: any, message: String}}
+        */
+        async function sendProgressAsync(data) {
+            const json = {
+                method : "POST",
+                headers : {
+                    "Content-Type" : "application/json"
+                },
+                body : JSON.stringify(data)
+            };
+            let resp;
+            try {
+                if (!_isConnected) throw Error("サーバーが応答しません");
+                resp = await fetch(`${_url}/api/progress`, json);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, value: error.value, message: error.message};
+            }
+            return { ok: true };
+        }
+        /**
+         * @returns {boolean}
+        */
+        async function getHealthAsync() {
+            let resp;
+            try {
+                resp = await fetch(`${_url}/health`);
+            }
+            catch (error) {
+                return false;
+            }
+            if (!resp.ok) {
+                return false;
+            }
+            const status = await resp.json();
+            if (status.Status !== "ok") {
+                return false;
+            }
+            return true;
         }
     </script>
 </body>

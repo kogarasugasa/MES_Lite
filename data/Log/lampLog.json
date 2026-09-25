@@ -1,0 +1,110 @@
+[
+  {
+    "DeviceId": "device002",
+    "UserId": "usr001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/9/24 18:02:46",
+    "ServerDateTime": "2026/9/24 18:02:46"
+  },
+  {
+    "DeviceId": "device002",
+    "UserId": "usr001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/9/24 18:03:34",
+    "ServerDateTime": "2026/9/24 18:03:34"
+  },
+  {
+    "DeviceId": "device002",
+    "UserId": "usr001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/9/24 18:06:14",
+    "ServerDateTime": "2026/9/24 18:06:14"
+  },
+  {
+    "DeviceId": "device002",
+    "UserId": "usr001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/9/24 18:06:38",
+    "ServerDateTime": "2026/9/24 18:06:38"
+  },
+  {
+    "DeviceId": "device002",
+    "UserId": "usr001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/9/24 18:07:05",
+    "ServerDateTime": "2026/9/24 18:07:05"
+  },
+  {
+    "DeviceId": "device002",
+    "UserId": "usr001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/9/24 18:07:19",
+    "ServerDateTime": "2026/9/24 18:07:19"
+  },
+  {
+    "DeviceId": "device002",
+    "UserId": "usr001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/9/24 18:07:35",
+    "ServerDateTime": "2026/9/24 18:07:35"
+  },
+  {
+    "DeviceId": "device002",
+    "UserId": "usr001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/9/24 18:07:58",
+    "ServerDateTime": "2026/9/24 18:07:58"
+  },
+  {
+    "DeviceId": "device001",
+    "UserId": "adm001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/9/24 18:08:11",
+    "ServerDateTime": "2026/9/24 18:08:11"
+  },
+  {
+    "DeviceId": "device001",
+    "UserId": "adm001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/9/24 18:09:02",
+    "ServerDateTime": "2026/9/24 18:09:02"
+  },
+  {
+    "DeviceId": "device002",
+    "UserId": "usr001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/9/25 11:11:43",
+    "ServerDateTime": "2026/9/25 11:11:43"
+  },
+  {
+    "DeviceId": "device002",
+    "UserId": "usr001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/9/25 11:12:57",
+    "ServerDateTime": "2026/9/25 11:12:57"
+  }
+]

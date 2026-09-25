@@ -1,4 +1,9 @@
-import { findAllUsers, findUserByUserId } from "../services/userService.js";
+import { HttpStatus } from "../helpers/httpStatusHelper.js";
+import {
+    findAllUsers,
+    findUserByUserId,
+    findUserVersion,
+} from "../services/userService.js";
 
 export const getUsers = async (req, res) => {
     const users = findAllUsers();
@@ -16,5 +21,16 @@ export const getUser = async (req, res) => {
     }
     else {
         res.status(404).json(user);
+    }
+}
+export const getUserVersion = async (req, res) => {
+    const version = findUserVersion();
+    if (version.ok) {
+        res.json(version);
+    }
+    else {
+        const notFound = HttpStatus.notFound;
+        const err = { ok: false, message: notFound.desc };
+        res.status(notFound.number).json(err);
     }
 }

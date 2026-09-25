@@ -1,3 +1,6 @@
+<head>
+    <title>詳細</title>
+</head>
 <style>
     body {
         font-size: 120%;
@@ -12,7 +15,7 @@
         text-align: left;
         margin-bottom: 10px
     }
-    .start {
+    .progressBtn {
         width : 30%;
         height : 10%;
     }
@@ -39,7 +42,7 @@
 </style>
 <div class="info">
     <br>
-    <a href="schedule_list.html" class="backButton">戻る</a>
+    <a href="schedule_list.html" class="backButton" id="backBtn">戻る</a>
     <span>
         <a>端末ID : </a>
         <a id="deviceId">未取得</a>
@@ -58,7 +61,7 @@
     </div>
 </div>
 <div id="messageArea" style="Display: None">
-    <button id=messageOkBtn onclick="hideMessage()">OK</button><a id="message"></a>
+    <button id=messageOkBtn>OK</button><a id="message"></a>
 </div>
 <div class="left">
     <a class="status" id="status">取得中</a>
@@ -126,14 +129,14 @@
         </table>
     </div>
     <div>
-        <button disabled="true" class="start" id="start" onclick="sendProgress('Running')">開始</button>
-        <button disabled="true" class="start" id="wait" onclick="sendProgress('Wait')">中断</button>
-        <button disabled="true" class="start" id="complete" onclick="sendProgress('Complete')">完了</button>
+        <button disabled="true" class="progressBtn" id="start">開始</button>
+        <button disabled="true" class="progressBtn" id="wait">中断</button>
+        <button disabled="true" class="progressBtn" id="complete">完了</button>
     </div>
 </div>
 
 
-<script>
+<script type="module">
     const _params = new URLSearchParams(window.location.search);
     const _url = _params.get("url").trim();
     const _deviceId = _params.get("deviceId").trim();
@@ -152,14 +155,36 @@
     const _endTime = _params.get("endTime");
     const _remark1 = _params.get("remark1");
     const _remark2 = _params.get("remark2");
+    const _localStorageKeys = {
+        user: "user",
+        device: "device",
+        line: "line",
+        pendingProgress: "pendingProgress",
+        schedules: "schedules",
+        progress: "progress",
+        progressType: "progressType",
+        delayRule: "delayRule",
+    };
     let _progress = null;
     let _progressTypes = null;
 
-    initialize();
+    initializeAsync();
+    document.getElementById("messageOkBtn").addEventListener("click", () => {
+        closeMessage();
+    });
+    document.getElementById("start").addEventListener("click", () => {
+        progressButtonClick("Running");
+    });
+    document.getElementById("wait").addEventListener("click", () => {
+        progressButtonClick("Wait");
+    });
+    document.getElementById("complete").addEventListener("click", () => {
+        progressButtonClick("Complete");
+    });
 
-    async function initialize() {
+    async function initializeAsync() {
         // データ取得
-        await loadMaster();
+        await loadAllAsync();
 
         // 端末情報
         document.getElementById("deviceId").textContent = _deviceId;
@@ -190,9 +215,11 @@
 
         // ステータス
         displayStatus();
-        
     }
-    // データ加工
+    /**
+     * @param {String} afterStatus
+     * @returns {[String]}
+    */
     function getEnableButtonNames(afterStatus) {
         switch (afterStatus) {
             case "None": return ["Running"];
@@ -200,7 +227,7 @@
             case "Wait": return ["Running"];
             case "Complete": return [];
             default:
-                console.log(`進捗の定義がありません ${afterStatus}`);
+                openMessage(`進捗の定義がありません ${afterStatus}`);
                 return [];
         }
     }
@@ -210,6 +237,18 @@
         document.getElementById("wait").disabled = !options.includes("Wait");
         document.getElementById("complete").disabled = !options.includes("Complete");
     }
+    function disableButton() {
+        document.getElementById("start").inert = true;
+        document.getElementById("wait").inert = true;
+        document.getElementById("complete").inert = true;
+        document.getElementById("backBtn").inert = true;
+    }
+    function enableButton() {
+        document.getElementById("start").inert = false;
+        document.getElementById("wait").inert = false;
+        document.getElementById("complete").inert = false;
+        document.getElementById("backBtn").inert = false;
+    }
     function displayStatus() {
         const statusPanel = document.getElementById("status");
         const status = _progressTypes.find(val => val.Status === _progress.AfterStatus) ||
@@ -218,9 +257,9 @@
         statusPanel.textContent = status.Display;
         statusPanel.style.backgroundColor = status.UiColor;
     }
-    // データ取得系
-    async function sendProgress(status) {
+    async function progressButtonClick(status) {
         const data = {
+            UUID : crypto.randomUUID(),
             SchNo : _schNo,
             BeforeStatus : null,
             AfterStatus : status,
@@ -230,65 +269,163 @@
             ClientDateTime : new Date().toLocaleString(),
             ServerDateTime : null
         }
+        disableButton();
+        let resp;
         try {
-            let init = {
-                method : "POST",
-                headers : {
-                    "Content-Type" : "application/json"
-                },
-                body : JSON.stringify(data)
-            };
-            const resp = await fetch(`${_url}/api/progress`, init);
-            if (!resp.ok) {
-                const err = await resp.json();
-                openMessage(err.message);
-                return;
-            }
-            const result = await resp.json();
+            openMessage("送信中...");
+            resp = await sendProgressAsync(data);
         }
         catch (error) {
-            alert(error.message);
-            return;
+            openMessage("登録に失敗しました。error.message: " + error.message);
         }
-        await loadMaster();
-        displayButtonEnables();
-        displayStatus();
-    }
-    async function loadMaster() {
-        _progress = await getProgress();
-        _progressTypes = await getProgressType();
-    }
-    async function getProgress() {
         try {
-            const resp = await fetch(`${_url}/api/progress/${_schNo}`);
             if (!resp.ok) {
-                alert((await resp.json()).message);
-                return;
+                saveProgress(data);
+                openMessage(
+                    "進捗は保存されましたが、" +
+                    "サーバーに登録にできませんでした。" +
+                    resp.message
+                );
             }
-            return await resp.json();
+            await loadAllAsync();
+            displayButtonEnables();
+            displayStatus();
         }
-        catch (error) {
-            alert(error.message)
+        finally {
+            enableButton();
         }
     }
-    async function getProgressType() {
-        try {
-            const resp = await fetch(`${_url}/api/progressType`);
-            if (!resp.ok) {
-                alert((await resp.json()).message);
-                return;
-            }
-            return await resp.json();
-        }
-        catch (error) {
-            alert(error);
-        }
-    }
-    function hideMessage() {
+    function closeMessage() {
         document.getElementById("messageArea").style.display = "none";
     }
     function openMessage(msg) {
         document.getElementById("messageArea").style.display = "block";
         document.getElementById("message").textContent = msg;
+    }
+    async function loadAllAsync() {
+        let err = "";
+        // 進捗を取得
+        let progress = await getProgressAsync();
+        if (!progress.ok) {
+            if (err === "") {
+                err = progress.message;
+            }
+            const local = JSON.parse(
+                localStorage.getItem(_localStorageKeys.progress) || "[]"
+            );
+            const pending = JSON.parse(
+                localStorage.getItem(_localStorageKeys.pendingProgress) || "[]"
+            );
+            const union = [].concat(local, pending);
+            const temp = union
+                .filter(val => val.SchNo === _schNo)
+                .pop() ||
+                { AfterStatus: "None" }
+            ;
+            progress = { ok: true, value: temp };
+        }
+        _progress = progress.value;
+        
+        // 進捗マスタを取得
+        let progressType = await getProgressTypeAsync();
+        if (!progressType.ok) {
+            const local = localStorage.getItem(_localStorageKeys.progressType);
+            if (local == null) {
+                if (err === "") {
+                    err = progress.message;
+                }
+                return;
+            }
+            progressType = { ok: true, value: JSON.parse(local) };
+        }
+        _progressTypes = progressType.value;
+
+        // メッセージ
+        if (err === "") {
+            closeMessage();
+        }
+        else {
+            openMessage("データの取得に失敗しました。" + err);
+        }
+    }
+    /** サーバーから進捗を取得
+     * @returns {{ok: boolean, value: any, message: String}}
+    */
+    async function getProgressAsync() {
+        let resp;
+        try {
+            resp = await fetch(`${_url}/api/progress/${_schNo}`);
+        }
+        catch (error) {
+            return { ok: false, message: error.message };
+        }
+        if (!resp.ok) {
+            const error = await resp.json();
+            return { ok: false, message: error.message };
+        }
+        try {
+            return { ok: true, value: await resp.json() };
+        }
+        catch (error) {
+            return { ok: false, message: error.message };
+        }
+    }
+    /** サーバーから進捗マスタを取得
+     * @returns {{ok: boolean, value: any, message: String}}
+    */
+    async function getProgressTypeAsync() {
+        let resp;
+        try {
+            resp = await fetch(`${_url}/api/progressType`);
+        }
+        catch (error) {
+            return { ok: false, message: error.message };
+        }
+        if (!resp.ok) {
+            const error = await resp.json();
+            return { ok: false, message: error.message };
+        }
+        try {
+            return {ok: true, value: await resp.json()} ;
+        }
+        catch (error) {
+            return  { ok: false, message: error.message };
+        }
+    }
+    /** 進捗をサーバーに送信
+     * @param {String} status
+     * @param {any} data
+     * @returns {{ok: boolean, message: String}}
+     * @description サーバーに接続できなければローカルに保存
+    */
+    async function sendProgressAsync(data) {
+        const json = {
+            method : "POST",
+            headers : {
+                "Content-Type" : "application/json"
+            },
+            body : JSON.stringify(data)
+        };
+        let resp;
+        try {
+            resp = await fetch(`${_url}/api/progress`, json);
+        }
+        catch (error) {
+            return { ok: false, message: error.message };
+        }
+        if (!resp.ok) {
+            const error = await resp.json();
+            return { ok: false, message: error.message};
+        }
+        return { ok: true };
+    }
+    /** 進捗をローカルに保存
+     * @param {Progress} progress
+    */
+    function saveProgress(progress) {
+        let saved = localStorage.getItem(_localStorageKeys.pendingProgress) || "[]";
+        saved = JSON.parse(saved);
+        saved.push(progress);
+        localStorage.setItem(_localStorageKeys.pendingProgress, JSON.stringify(saved));
     }
 </script>

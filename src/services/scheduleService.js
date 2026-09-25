@@ -20,29 +20,19 @@ export const findSchedulesByLine = (line) => {
     }
 }
 export const findSchedulesVersion = () => {
-    let version = loadUpdateDate();
-    if (version) {
-        return { ok: true, value: version };
+    const path = getPath();
+    if (!fs.existsSync(path)) {
+        return { ok: false, message: "schedule file not exists" };
     }
-    else {
-        return { ok: false, message: "loadUpdateDate() failed" };
-    }
+    const stats = fs.statSync(path);
+    const version = stats.mtime.toLocaleString();
+    return { ok: true, value: { Version: version } };
 }
 function loadJson() {
     const path = getPath();
     if (fs.existsSync(path)) {
         let str = fs.readFileSync(path, "utf8");
         return JSON.parse(str);
-    }
-    else {
-        return null;
-    }
-}
-function loadUpdateDate() {
-    const path = getPath();
-    if (fs.existsSync(path)) {
-        const stats = fs.statSync(path);
-        return { Version: stats.mtime.toLocaleString() };
     }
     else {
         return null;

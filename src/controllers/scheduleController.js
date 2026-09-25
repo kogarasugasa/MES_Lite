@@ -1,4 +1,8 @@
-import { findAllSchedules, findSchedulesByLine, findSchedulesVersion } from "../services/scheduleService.js"
+import {
+    findAllSchedules,
+    findSchedulesByLine,
+    findSchedulesVersion
+} from "../services/scheduleService.js"
 
 export const getSchedules = async (req, res) => {
     let schedules = findAllSchedules();

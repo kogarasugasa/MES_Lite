@@ -1,0 +1,14 @@
+[
+    {
+        "DeviceId": "device001",
+        "Name": "組立1",
+        "DeviceAddress": "192.168.22.1",
+        "LampAddress": "192.168.22.101"
+    },
+    {
+        "DeviceId": "device002",
+        "Name": "組立2",
+        "DeviceAddress": "192.168.22.2",
+        "LampAddress": "192.168.22.102"
+    }
+]

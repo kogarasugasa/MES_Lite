@@ -1,0 +1,11 @@
+| ステータス                     | 用途                 |
+| ------------------------- | ------------------ |
+| 200 OK                    | 登録成功               |
+| 201 Created               | 登録成功（RESTではこちらが推奨） |
+| 400 Bad Request           | 入力チェックエラー          |
+| 401 Unauthorized          | 認証エラー              |
+| 403 Forbidden             | 権限エラー              |
+| 404 Not Found             | 対象データなし            |
+| 409 Conflict              | 重複登録エラー            |
+| 422 Unprocessable Entity  | 業務ルール違反            |
+| 500 Internal Server Error | システムエラー            |

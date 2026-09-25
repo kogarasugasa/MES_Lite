@@ -10,6 +10,7 @@ import progressTypeRoute from "./routes/progressTypeRoute.js"
 import delayRule from "./routes/delayRuleRoute.js"
 import usersRoute from "./routes/usersRoute.js"
 import deviceRoute from "./routes/deviceRoute.js"
+import lampLogRoute from "./routes/lampLogRoute.js"
 
 const app = express();
 
@@ -38,11 +39,14 @@ app.use("/api/delayrule", delayRule);
 // ユーザー（マスタ）
 app.use("/api/users", usersRoute);
 
-// デバイス追加
+// デバイス（マスタ）
 app.use("/api/device", deviceRoute);
 
+// ランプログ
+app.use("/api/lamplog", lampLogRoute);
+
 // ヘルスチェック
-app.get("/health", (req, res) => res.json({ status: "ok" }));
+app.get("/health", (req, res) => res.json({ Status: "ok" }));
 
 // favicon
 app.use("/favicon.ico",favicon);

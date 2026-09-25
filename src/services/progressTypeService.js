@@ -1,5 +1,14 @@
 import fs from "fs"
 
+export const findProgressVersion = () => {
+    const path = getPath();
+    if (!fs.existsSync(path)) {
+        return { ok: false, message: "file not exists" };
+    }
+    const stat = fs.statSync(path);
+    const version = stat.mtime.toLocaleString();
+    return { ok: true, value: { Version: version } };
+}
 export const findAllProgressTypes = () => {
     const types = loadJson();
     if (types) {
@@ -10,9 +19,7 @@ export const findAllProgressTypes = () => {
     }
 }
 function loadJson() {
-    const dir = "./data/Master";
-    const fileName = "/progressType.json"
-    let path = dir + fileName;
+    const path = getPath();
     if (fs.existsSync(path)) {
         let str = fs.readFileSync(path, "utf8");
         return JSON.parse(str);
@@ -20,4 +27,9 @@ function loadJson() {
     else {
         return null;
     }
+}
+function getPath() {
+    const dir = "./data/Master";
+    const fileName = "/progressType.json"
+    return dir + fileName;
 }
