@@ -106,5 +106,23 @@
     "LampAddress": "no data",
     "ClientDateTime": "2026/9/25 11:12:57",
     "ServerDateTime": "2026/9/25 11:12:57"
+  },
+  {
+    "DeviceId": "device002",
+    "UserId": "adm001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/10/8 10:42:31",
+    "ServerDateTime": "2026/10/8 10:42:31"
+  },
+  {
+    "DeviceId": "device002",
+    "UserId": "adm001",
+    "LampColor": "Red",
+    "DeviceAddress": "no data",
+    "LampAddress": "no data",
+    "ClientDateTime": "2026/10/8 10:50:56",
+    "ServerDateTime": "2026/10/8 10:50:56"
   }
 ]
