@@ -44,9 +44,25 @@
         height: 30px; /* ローディングアイコンのサイズになる */
         animation: spin 1s linear infinite; /* 1秒ごとのアニメーションの指定 */
     }
+    .bell {
+        display: none;
+    }
     @keyframes spin {
         0% { transform: rotate(0deg); } 
         100% { transform: rotate(360deg); }
+    }
+    .blink {
+        -webkit-animation: blink 1s ease infinite;
+        animation: blink 1s ease infinite;
+        display: none;
+    }
+    @-webkit-keyframes blink {
+        0% {opacity: 0;}
+        100% {opacity: 1;}
+    }
+    @keyframes blink {
+        0% {opacity: 0;}
+        100% {opacity: 1;}
     }
 </style>
 <body">
@@ -57,7 +73,6 @@
         <a>[端末マスタ Ver.</a><a id="devicesVersion"></a><a>]</a>
         <a>[予定情報 Ver.</a><a id="schedulesVersion"></a><a>]</a>
         <a>[進捗情報 Ver.</a><a id="progressVersion"></a><a>]</a>
-        <audio id="callSound" preload="auto" src="sound.wav" type="audio/wav"></audio>
         <br>
         <button onclick="loadMasterAsync()">マスタ更新</button>
         <button onclick="loadSchedulesAsync()">予定取得</button>
@@ -94,6 +109,17 @@
             <a>担当者:</a><input type="text" name="userId" id="userIdEdit">
             <select id="userChoice"><option value="">-選択してください-</option></select>
         </p>
+    </div>
+    <div class="blink" id="calledLinesArea">
+        <a>🔔</a>
+        <br>
+        <a>🔔呼び出しを受けています🔔</a><span id="calledLineButtonArea"></span>
+        <br>
+        <a>🔔</a>
+        <audio id="callSound" preload="auto" src="sound.wav" type="audio/wav"></audio>
+    </div>
+    <div class="bell" id="bellArea">
+        <button onclick="postCallerAsync()">🔔呼び鈴🔔</button>
     </div>
     <div style="display:block; margin-top:10px;" id="tableArea">
         <table id="schedule-table" border="1" style="border-collapse: collapse">
@@ -172,6 +198,7 @@
         let _progressTypeVersion = null;
         let _usersVersion = null;
         let _devices = { Version: "", items: [] };
+        let _callers = [];
 
         // initialize
         window.addEventListener("pointerdown", () => {
@@ -247,7 +274,6 @@
             // 呼出し更新
             const loopUpdateSoundAsync = async () => {
                 await loadCallStatusAsync();
-                updateSound();
                 setTimeout(loopUpdateSoundAsync, 5000);
             };
             await loopUpdateSoundAsync();
@@ -492,7 +518,47 @@
                 _schedules :
                 _schedules.filter(val => val.Line === _line)
             ;
-            
+
+            // 呼び出し
+            if (_user.Type != null && _user.Type !== "") {
+                document.getElementById("bellArea").style.display = "none";
+                if (_callers.length === 0) {
+                    document.getElementById("calledLinesArea").style.display = "none";
+                    const calledLines = document.getElementById("calledLineButtonArea");
+                    //calledLines.childNodes.forEach((v, k, p) => v.remove());
+                    calledLines.replaceChildren([]);
+                    // 音を止める
+                    const sound = document.getElementById("callSound")
+                    sound.pause();
+                    sound.currentTime = 0;
+                }
+                else {
+                    document.getElementById("calledLinesArea").style.display = "block";
+                    const calledLines = document.getElementById("calledLineButtonArea");
+                    const fragment = document.createDocumentFragment();
+                    for (let caller of _callers) {
+                        const btn = document.createElement("button")
+                        btn.textContent = caller.Line;
+                        btn.name = caller.CallId;
+                        btn.addEventListener("click", function () {
+                            _callers = _callers.filter(v => v.CallId !== this.name);
+                            postCallResolvedAsync(this.name);
+                        });
+                        fragment.appendChild(btn);
+                    }
+                    calledLines.replaceChildren(fragment);
+                    // 音を鳴らす
+                    const sound = document.getElementById("callSound")
+                    if (sound.paused || sound.ended) {
+                        sound.play();
+                    }
+                }
+            }
+            else {
+                document.getElementById("calledLinesArea").style.display = "none";
+                document.getElementById("bellArea").style.display = "block";
+            }
+            ;
             // 行追加
             const tableRows = document.querySelector("#schedule-table tbody");
             const fragment = document.createDocumentFragment();
@@ -685,16 +751,6 @@
             // ソート
             scheduleWork.sort((a, b) => _scheduleComppare(a, b) - _scheduleComppare(b, a));
             _schedules = scheduleWork;
-        }
-        function updateSound() {
-            if (_isSoundPlayRequested) {
-                document.getElementById("callSound").play();
-            }
-            if (_isSoundStopRequested) {
-                const call = document.getElementById("callSound")
-                call.pause();
-                call.currentTime = 0;
-            }
         }
         // functions
         /** (イベント用）メッセージを閉じる
@@ -974,16 +1030,31 @@
             _progressVersion = newVersion;
         }
         async function loadCallStatusAsync() {
-            const status = await getCallStatusAsync();
-            if (!status.ok) {
+            const callers = await getCallers();
+            if (!callers.ok) {
                 _message = status.message;
                 return;
             }
-            const toMe = status.value
-                .find(val => val.DeviceId = _device.DeviceId)
-            ;
-            if (toMe == null) {
+            if (callers.value.every(a => _callers.some(b => b.CallId === a.CallId))) {
                 return;
+            }
+            _isUpdated = true;
+            _callers = callers.value;
+        }
+        async function postCallerAsync() {
+            let sended = sendCallerAsync(
+                _device.DeviceId,
+                _user.UserId,
+                _line
+            );
+            if (!sended.ok) {
+                _message = sended.message;
+            }
+        }
+        async function postCallResolvedAsync(callId) {
+            let sended = sendCallResolvedAsync(callId);
+            if (!sended.ok) {
+                _message = sended.message;
             }
         }
         /** ローカルに保存された進捗を取得します
@@ -1414,7 +1485,8 @@
             const devices = await resp.json();
             return devices;
         }
-        /** 端末マスタのバージョンを取得する
+        /**
+         * 端末マスタのバージョンを取得する
          * @returns {{ ok: boolean, value: string, message: string }}
         */
         async function getDeviceVersionAsync() {
@@ -1433,11 +1505,15 @@
             const version = await resp.json();
             return { ok: true, value: version.value.Version };
         }
-        async function getCallStatusAsync() {
+        /**
+         * 呼び出し中の工程を取得する
+         * @returns {{ ok: boolean, value: [], message: string }}
+        */
+        async function getCallers() {
             let resp;
             try {
                 if (!_isConnected) throw Error("サーバーに接続されていません");
-                resp = await fetch(`${_url}/api/call`);
+                resp = await fetch(`${_url}/api/caller/pending?limit=5`);
             }
             catch (error) {
                 return { ok: false, message: error.message };
@@ -1447,6 +1523,59 @@
                 return { ok: false, message: error.message };
             }
             return await resp.json();
+        }
+        /** 呼び出しを送信する
+         * @param {string} deviceId
+         * @param {string} userId
+         * @param {string} line
+         * @returns {{ ok: boolean, message: string }}
+        */
+        async function sendCallerAsync(deviceId, userId, line) {
+            const data = {
+                CallId: crypto.randomUUID(),
+                DeviceId: deviceId,
+                UserId: userId,
+                Line: line,
+                IsPending: true,
+                ClientDateTime: (new Date).toLocaleString(),
+            }
+            const json = {
+                method : "POST",
+                headers : {
+                    "Content-Type" : "application/json"
+                },
+                body : JSON.stringify(data)
+            };
+            let resp;
+            try {
+                resp = await fetch(`${_url}/api/caller`, json);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            return { ok: true };
+        }
+        /** 呼び出し受付を送信する
+         * @param {string} callId
+         * @returns {{ ok: boolean, message: string }}
+        */
+        async function sendCallResolvedAsync(callId) {
+            let resp;
+            try {
+                resp = await fetch(`${_url}/api/caller/resolve/${callId}`);
+            }
+            catch (error) {
+                return { ok: false, message: error.message };
+            }
+            if (!resp.ok) {
+                const error = await resp.json();
+                return { ok: false, message: error.message };
+            }
+            return { ok: true };
         }
         /**
          * @description ランプ変更
