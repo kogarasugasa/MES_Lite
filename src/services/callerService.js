@@ -95,7 +95,8 @@ export const updateCaller = (caller) => {
 function loadJson() {
     if (!fs.existsSync(filePath)) {
         logWarn(`${filePath} is not found`);
-        return [];
+        fs.writeFileSync(filePath, "[]", "utf8",)
+        logInfo(`${filePath} created!`);
     }
     let data;
     try {
