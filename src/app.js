@@ -11,6 +11,8 @@ import delayRule from "./routes/delayRuleRoute.js"
 import usersRoute from "./routes/usersRoute.js"
 import deviceRoute from "./routes/deviceRoute.js"
 import lampLogRoute from "./routes/lampLogRoute.js"
+import callerRoute from "./routes/callerRoute.js"
+import soundRoute from "./routes/soundRoute.js"
 
 const app = express();
 
@@ -23,6 +25,9 @@ app.use("/schedule_list.html", indexRoute);
 
 // 詳細画面
 app.use("/detail.html", detailRoute);
+
+// 呼び出し音
+app.use("/sound.wav", soundRoute);
 
 // スケジュール取得
 app.use("/api/schedules", scheduleRoute);
@@ -44,6 +49,9 @@ app.use("/api/device", deviceRoute);
 
 // ランプログ
 app.use("/api/lamplog", lampLogRoute);
+
+// 呼び出し
+app.use("/api/caller", callerRoute);
 
 // ヘルスチェック
 app.get("/health", (req, res) => res.json({ Status: "ok" }));
