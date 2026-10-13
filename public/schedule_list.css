@@ -1,0 +1,60 @@
+@charset "UTF-8";
+
+table {
+    height: 100%; /*position: sticky 用*/
+}
+thead {
+    position: sticky;
+    top: 0; /*position: sticky 用*/
+}
+body {
+    font-size: 120%;
+}
+button {
+    font-size: 100%;
+}
+input {
+    font-size: 100%
+}
+select {
+    font-size: 100%;
+}
+.infoEdit {
+    display: none;
+}
+.critical {
+    font-size: 200%;
+    background-color: Red;
+    display: None;
+}
+.message {
+    display: none;
+}
+#spinner {
+    border: 4px solid #eee; /* 先の太さや色になる */
+    border-top: 4px solid #333;
+    border-radius: 50%; /* 50% 丸めるとまるくなる */
+    width: 30px; /* ローディングアイコンのサイズになる */
+    height: 30px; /* ローディングアイコンのサイズになる */
+    animation: spin 1s linear infinite; /* 1秒ごとのアニメーションの指定 */
+}
+.bell {
+    display: none;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); } 
+    100% { transform: rotate(360deg); }
+}
+.blink {
+    -webkit-animation: blink 1s ease infinite;
+    animation: blink 1s ease infinite;
+    display: none;
+}
+@-webkit-keyframes blink {
+    0% {opacity: 0;}
+    100% {opacity: 1;}
+}
+@keyframes blink {
+    0% {opacity: 0;}
+    100% {opacity: 1;}
+}

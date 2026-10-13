@@ -1,10 +1,20 @@
 import path from "path"
 
 export const getDetail = async (req, res) => {
-    res.sendFile(getPath());
-}
-function getPath() {
     const dir = "./public";
     const fileName = "/detail.html"
-    return path.resolve(dir + fileName);
+    const filePath = path.resolve(dir + fileName);
+    res.sendFile(filePath);
+}
+export const getDetailCss = async (req, res) => {
+    const dir = "./public";
+    const fileName = "/detail.css"
+    const filePath = path.resolve(dir + fileName);
+    res.sendFile(filePath);
+}
+export const getDetailScript = async (req, res) => {
+    const dir = "./public";
+    const fileName = "/detail.js"
+    const filePath = path.resolve(dir + fileName);
+    res.sendFile(filePath);
 }

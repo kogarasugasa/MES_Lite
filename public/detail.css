@@ -1,0 +1,39 @@
+@charset "UTF-8";
+
+body {
+    font-size: 120%;
+}
+.left {
+    float: left;
+    text-align: left;
+    margin-bottom: 10px
+}
+.right {
+    float: right;
+    text-align: left;
+    margin-bottom: 10px
+}
+.progressBtn {
+    width : 30%;
+    height : 10%;
+}
+.status {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width : 40%;
+    height : 50%;
+    font-size : 160%;
+    border-radius : 5px;
+    padding : 10px;
+}
+.backButton {
+    border-radius : 5px;
+    background-color :lightskyblue;
+    padding : 10px;
+    text-decoration : none;
+    color : white;
+}
+select {
+    font-size: 100%;
+}

@@ -1,10 +1,20 @@
 import path from "path"
 
 export const getIndex = async (req, res) => {
-    res.sendFile(getPath());
-}
-function getPath() {
     const dir = "./public";
     const fileName = "/schedule_list.html"
-    return path.resolve(dir + fileName);
+    const filePath = path.resolve(dir + fileName);
+    res.sendFile(filePath);
+}
+export const getCss = async (req, res) => {
+    const dir = "./public";
+    const fileName = "/schedule_list.css"
+    const filePath = path.resolve(dir + fileName);
+    res.sendFile(filePath);
+}
+export const getScript = async (req, res) => {
+    const dir = "./public";
+    const fileName = "/schedule_list.js"
+    const filePath = path.resolve(dir + fileName);
+    res.sendFile(filePath);
 }
