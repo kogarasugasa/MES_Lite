@@ -888,7 +888,7 @@ async function loadCallStatusAsync() {
     _callers = callers.value;
 }
 async function postCallerAsync() {
-    let sended = sendCallerAsync(
+    let sended = await sendCallerAsync(
         _device.DeviceId,
         _user.UserId,
         _line
@@ -898,7 +898,7 @@ async function postCallerAsync() {
     }
 }
 async function postCallResolvedAsync(callId) {
-    let sended = sendCallResolvedAsync(callId);
+    let sended = await sendCallResolvedAsync(callId);
     if (!sended.ok) {
         _message = sended.message;
     }
